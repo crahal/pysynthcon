@@ -11,6 +11,7 @@ from pysynth import (
     Panel,
     SyntheticControl,
     SyntheticDID,
+    TwoStageIndividualSC,
     compare,
     placebo_test,
 )
@@ -58,7 +59,16 @@ def test_additive_multi_treated_exact(model):
     assert model.fit(panel).att == pytest.approx(-4, abs=1e-8)
 
 
-@pytest.mark.parametrize("model", [SyntheticControl(), SCUL(), IndividualSC(3), SyntheticDID()])
+@pytest.mark.parametrize(
+    "model",
+    [
+        SyntheticControl(),
+        SCUL(),
+        IndividualSC(),
+        TwoStageIndividualSC(n_neighbors=3),
+        SyntheticDID(),
+    ],
+)
 def test_no_treated_post_leakage(panel, model):
     y = panel.y.copy()
     y[panel.n_pre :, -1] += 1000
@@ -105,22 +115,24 @@ def test_scul_all_penalty_rules(panel):
         assert 0.01 <= r.metadata["alpha"] <= 1
 
 
-def test_individual_screening_and_bootstrap_reproducibility(panel):
-    result = IndividualSC(1).fit(panel)
-    nearest = np.argmin(np.sum((panel.control[:20] - panel.treated[:20, None]) ** 2, axis=0))
-    assert result.weights.iloc[nearest] == 1
-    model = IndividualSC(4, n_bootstrap=10, random_state=42)
+@pytest.mark.parametrize(
+    "model",
+    [
+        IndividualSC(n_bootstrap=10, random_state=42),
+        TwoStageIndividualSC(n_neighbors=4, n_bootstrap=10, random_state=42),
+    ],
+)
+def test_individual_bootstrap_reproducibility(panel, model):
     a, b = model.fit(panel), model.fit(panel)
     np.testing.assert_array_equal(a.weights, b.weights)
     assert len(a.metadata["bootstrap_atts"]) == 10
     assert a.weights.sum() == pytest.approx(1)
 
 
-def test_individual_event_aggregation(panel):
+@pytest.mark.parametrize("model", [IndividualSC(), TwoStageIndividualSC(n_neighbors=6)])
+def test_individual_event_aggregation(panel, model):
     shorter = Panel(panel.y[2:-2], 6, 18, units=panel.units)
-    fitted = IndividualSC().fit_many(
-        {"one": panel, "two": shorter}, person_weights={"one": 1, "two": 3}
-    )
+    fitted = model.fit_many({"one": panel, "two": shorter}, person_weights={"one": 1, "two": 3})
     assert fitted.att == pytest.approx(3, abs=2e-4)
     assert fitted.summary.loc[-20, "n"] == 1
     assert fitted.summary.loc[0, "n"] == 2
@@ -155,7 +167,7 @@ def test_comparison_rejects_different_samples(panel):
         SCUL(alpha=-1),
         SCUL(horizon=100),
         SCUL(selection="bad"),
-        IndividualSC(0),
+        TwoStageIndividualSC(n_neighbors=0),
         IndividualSC(n_bootstrap=-1),
         SyntheticDID(eta_lambda=-1),
         SyntheticDID(noise=np.nan),

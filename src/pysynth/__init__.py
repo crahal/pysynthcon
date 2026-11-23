@@ -2,7 +2,7 @@
 
 from .backends import SCM, PySyncon
 from .classic import SyntheticControl
-from .individual import IndividualEstimate, IndividualSC
+from .individual import IndividualEstimate, IndividualSC, TwoStageIndividualSC
 from .inference import PlaceboResult, placebo_test
 from .panel import Panel
 from .results import Estimate, Estimator, compare
@@ -17,6 +17,7 @@ __all__ = [
     "SyntheticControl",
     "SCUL",
     "IndividualSC",
+    "TwoStageIndividualSC",
     "IndividualEstimate",
     "SyntheticDID",
     "DifferenceInDifferences",
