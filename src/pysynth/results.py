@@ -1,0 +1,141 @@
+"""Common result objects and comparison helpers."""
+
+from dataclasses import dataclass, field
+from typing import Any, Mapping, Protocol
+
+import numpy as np
+import pandas as pd
+
+from .panel import Panel
+
+
+class Estimator(Protocol):
+    """An estimator consumes a Panel and returns an Estimate."""
+
+    def fit(self, panel: Panel) -> "Estimate": ...
+
+
+@dataclass
+class Estimate:
+    """Observed and synthetic paths in the original outcome units.
+
+    ``effects`` is observed minus counterfactual. For SDID the counterfactual
+    includes its weighted pre-treatment level correction. ``att`` averages
+    post-treatment effects; it is not an uncertainty estimate.
+    """
+
+    method: str
+    observed: pd.Series
+    counterfactual: pd.Series
+    weights: pd.Series
+    n_pre: int
+    intercept: float = 0.0
+    time_weights: pd.Series | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def effects(self) -> pd.Series:
+        """Time-specific observed minus counterfactual outcomes."""
+        return (self.observed - self.counterfactual).rename("effect")
+
+    @property
+    def att(self) -> float:
+        """Mean effect over all post-treatment periods."""
+        return float(self.effects.iloc[self.n_pre :].mean())
+
+    @property
+    def pre_rmse(self) -> float:
+        """Root mean squared pre-treatment discrepancy."""
+        return float(np.sqrt(np.mean(self.effects.iloc[: self.n_pre] ** 2)))
+
+    def to_frame(self) -> pd.DataFrame:
+        """Export paths and the post-treatment indicator."""
+        return pd.DataFrame(
+            {
+                "observed": self.observed,
+                "counterfactual": self.counterfactual,
+                "effect": self.effects,
+                "post": np.arange(len(self.observed)) >= self.n_pre,
+            }
+        )
+
+    def plot(self, *, ax=None, effects: bool = False):
+        """Plot paths (or effects); requires the ``plot`` extra. Returns an Axes."""
+        import matplotlib.pyplot as plt
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(9, 4))
+        if effects:
+            ax.plot(self.effects.index, self.effects, label=self.method)
+            ax.axhline(0, color="grey", linewidth=0.8)
+            ax.set_ylabel("Observed − counterfactual")
+        else:
+            ax.plot(self.observed.index, self.observed, label="Observed")
+            ax.plot(self.counterfactual.index, self.counterfactual, label=self.method)
+            ax.set_ylabel("Outcome")
+        ax.axvline(self.observed.index[self.n_pre], color="grey", linestyle="--")
+        ax.set_xlabel(self.observed.index.name or "Time")
+        ax.legend()
+        return ax
+
+
+def make_estimate(
+    panel, method, weights, intercept=0.0, time_weights=None, metadata=None, counterfactual=None
+):
+    """Internal result constructor, retaining label alignment."""
+    weights = np.asarray(weights, dtype=float).reshape(-1)
+    if len(weights) != panel.n_control or not np.isfinite(weights).all():
+        raise ValueError("Invalid fitted donor weights")
+    cf = (
+        panel.control @ weights + intercept
+        if counterfactual is None
+        else np.asarray(counterfactual)
+    )
+    if cf.shape != panel.treated.shape or not np.isfinite(cf).all():
+        raise ValueError("Invalid fitted counterfactual")
+    return Estimate(
+        method,
+        pd.Series(panel.treated, index=panel.times, name="observed"),
+        pd.Series(cf, index=panel.times, name="counterfactual"),
+        pd.Series(weights, index=panel.units[: panel.n_control], name="weight"),
+        panel.n_pre,
+        float(intercept),
+        None
+        if time_weights is None
+        else pd.Series(time_weights, index=panel.times[: panel.n_pre], name="time_weight"),
+        metadata or {},
+    )
+
+
+def compare(models: Mapping[str, Estimator | Estimate], panel: Panel | None = None) -> pd.DataFrame:
+    """Compare fitted estimates or fit named estimators on a common panel.
+
+    Failures propagate; methods are never silently omitted. Models may use
+    different estimands or covariates: see the method documentation.
+    """
+    rows = []
+    reference = None
+    for name, model in models.items():
+        if not isinstance(model, Estimate):
+            if panel is None:
+                raise ValueError("panel is required when comparing unfitted estimators")
+            model = model.fit(panel)
+        if reference is not None and (
+            model.n_pre != reference.n_pre
+            or not model.observed.index.equals(reference.observed.index)
+            or not np.array_equal(model.observed.to_numpy(), reference.observed.to_numpy())
+        ):
+            raise ValueError("Compared estimates must share observed outcomes and treatment timing")
+        reference = model
+        rows.append(
+            {
+                "model": name,
+                "att": model.att,
+                "pre_rmse": model.pre_rmse,
+                "donors_used": int((model.weights.abs() > 1e-6).sum()),
+                "weight_sum": float(model.weights.sum()),
+            }
+        )
+    if not rows:
+        raise ValueError("models must not be empty")
+    return pd.DataFrame(rows).set_index("model")
