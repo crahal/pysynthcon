@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "Please cite PySynth, the underlying method papers, and upstream packages used."
+title: "PySynth: comparable synthetic control methods in Python"
+type: software
+authors:
+  - name: "PySynth contributors"
+version: 0.1.0
+date-released: 2026-11-23
+repository-code: "https://github.com/crahal/PySynth"
+license: GPL-3.0-only

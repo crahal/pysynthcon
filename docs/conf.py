@@ -1,0 +1,11 @@
+project = "PySynth"
+author = "PySynth contributors"
+release = "0.1.0"
+extensions = ["myst_parser", "sphinx.ext.autodoc", "sphinx.ext.napoleon", "sphinx.ext.viewcode", "sphinx.ext.mathjax"]
+source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
+html_theme = "alabaster"
+exclude_patterns = ["_build"]
+autodoc_member_order = "bysource"
+autodoc_typehints = "description"
+myst_enable_extensions = ["dollarmath", "colon_fence"]
+html_static_path = []
