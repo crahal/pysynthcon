@@ -20,8 +20,8 @@ Python 3.10 or newer. Install this repository; the distribution name is
 `pysynth` project from PyPI.
 
 ```bash
-git clone https://github.com/crahal/PySynth.git
-cd PySynth
+git clone https://github.com/crahal/pysynthcon.git
+cd pysynthcon
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 python -m pip install -e '.[backends,notebooks]'
