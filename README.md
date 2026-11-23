@@ -40,7 +40,9 @@ Core estimators need neither R nor the optional upstream packages. The
 ## A complete example
 
 ```python
-from pysynth import SyntheticControl, SCUL, IndividualSC, SyntheticDID, compare
+from pysynth import (
+    SyntheticControl, SCUL, IndividualSC, TwoStageIndividualSC, SyntheticDID, compare,
+)
 from pysynth.datasets import DATASETS, load_dataset
 
 data = load_dataset("california")  # requests download; pinned URL + SHA256
@@ -49,7 +51,8 @@ panel = DATASETS["california"].panel(data)
 models = {
     "SCM": SyntheticControl(),
     "SCUL": SCUL(initial_window=10, horizon=2),
-    "Individual SC": IndividualSC(n_neighbors=10),
+    "ISC": IndividualSC(),
+    "2SISC": TwoStageIndividualSC(n_neighbors=10),
     "SDID": SyntheticDID(),
 }
 fits = {name: model.fit(panel) for name, model in models.items()}
@@ -83,7 +86,7 @@ result.to_frame()            # observed, counterfactual, effect, post
 missing outcomes, unbalanced selected panels, and invalid timing raise errors.
 For simultaneous treatment, pass `treated_units=[...]` to `Panel.from_frame`.
 For individual-specific timing, build one eligible panel per case and use
-`IndividualSC.fit_many` ([guide](docs/data.md)).
+`IndividualSC.fit_many` or `TwoStageIndividualSC.fit_many` ([guide](docs/data.md)).
 
 ## Available methods
 
@@ -91,7 +94,8 @@ For individual-specific timing, build one eligible panel per case and use
 |---|---|---|
 | `SyntheticControl()` | Convex outcome-matching SCM | Equal importance for every pre-period; optional ridge penalty |
 | `SCUL()` | Synthetic Control Using Lasso | Rolling-origin selection; signed weights and intercept |
-| `IndividualSC()` | Costofcare-style individual SC | Optional nearest donors, donor resampling, event-time aggregation |
+| `IndividualSC()` | Individual Synthetic Control (ISC) | Full eligible donor pool; donor resampling and event-time aggregation |
+| `TwoStageIndividualSC(n_neighbors=10)` | Two-Stage Individual Synthetic Control (2SISC) | Nearest-neighbor donor screening, followed by ISC within that group |
 | `SyntheticDID()` | Synthetic difference-in-differences | Native R-reference algorithm; simultaneous treated blocks |
 | `DifferenceInDifferences()` | DID comparison | Uniform unit and time weights |
 | `PySyncon("synth")` | Classical predictor-based SCM | Optional `pysyncon.Dataprep` for published specifications |
@@ -102,13 +106,18 @@ For individual-specific timing, build one eligible panel per case and use
 | `SCM("diffsynth")` | Differenced SCM | Local pandas compatibility fix and level correction |
 
 See [method definitions](docs/methods.md) and [backend details](docs/backends.md).
-The costofcare link represents the individual synthetic control design of
-Vagni and Breen (2021), not a distinct lasso estimator.
+Vanilla ISC uses every eligible donor in each individual's panel. 2SISC first
+selects up to `n_neighbors` donors using pretreatment Euclidean distance, then
+fits the synthetic-control weights within that group. Both support optional
+donor resampling and event-time aggregation. To migrate the initial API,
+replace `IndividualSC(n_neighbors=k)` with `TwoStageIndividualSC(n_neighbors=k)`.
+The [individual-method guide](docs/methods.md#individual-synthetic-control-isc)
+distinguishes these implementations from the original MSCMT survey workflow.
 
 ## Empirical notebooks
 
 Each notebook downloads data with `requests`, checks the source hash, runs a
-reference specification with numerical assertions, and compares **all eleven**
+reference specification with numerical assertions, and compares **all twelve**
 applicable interfaces on a common outcome panel.
 
 | Notebook | Academic setting | Reference check |

@@ -3,6 +3,27 @@
 All notable changes are documented here. Versioning follows semantic
 versioning; the API may evolve during the 0.x research releases.
 
+## [Unreleased]
+
+### Added
+
+- Explicit `TwoStageIndividualSC` estimator, labelled **Two-Stage Individual
+  Synthetic Control (2SISC)**: nearest-neighbor screening on pretreatment
+  features, followed by convex synthetic-control fitting within that group.
+- Separate ISC and 2SISC rows in all four executed empirical notebooks,
+  bringing each comparison to twelve interfaces.
+- Donor-selection metadata and analytic checks for full-pool equivalence,
+  neighbor ties, feature matching, aggregation and post-treatment leakage.
+
+### Changed
+
+- `IndividualSC()` now unambiguously denotes vanilla ISC over the full
+  eligible donor pool. Replace the initial API's
+  `IndividualSC(n_neighbors=k)` with `TwoStageIndividualSC(n_neighbors=k)`.
+- Both individual estimators take keyword-only options and return method
+  labels `ISC` and `2SISC`. Donor resampling remains a conditional sensitivity
+  diagnostic; 2SISC keeps its stage-one donor group fixed during resampling.
+
 ## [0.1.0] — 2026-11-23
 
 ### Added

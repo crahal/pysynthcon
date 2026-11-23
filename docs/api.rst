@@ -22,6 +22,7 @@ Native methods
 
 .. automodule:: pysynth.individual
    :members:
+   :inherited-members:
 
 .. automodule:: pysynth.sdid
    :members:

@@ -63,29 +63,68 @@ Convergence issues are surfaced. Native and R SCUL `lambda.min` predictions
 are checked on an independent R-generated fixture; exact default-path parity
 is not claimed for the other options.
 
-## Individual synthetic control
+## Individual synthetic control (ISC)
 
-`IndividualSC` implements the costofcare-style per-case design motivated by
-[Vagni and Breen (2021)](https://doi.org/10.1093/esr/jcab014). For each case:
+`IndividualSC()` is vanilla ISC: fit a synthetic control separately for each
+individual using their **full eligible donor pool**. This per-case design is
+motivated by [Vagni and Breen (2021)](https://doi.org/10.1093/esr/jcab014).
+For pretreatment feature vector $x_i$ and donor feature matrix $X_0$, solve
 
-1. Obtain the caller's eligible, untreated donor pool and event window.
-2. Optionally choose the nearest `n_neighbors` donors by Euclidean distance
-   on pre-outcomes or an explicit feature matrix.
-3. Fit nonnegative weights summing to one, with no intercept, using the same
-   fitting features. Predict from those donors' outcome paths.
-4. Optionally resample selected donors with replacement and average the fits.
-5. Aggregate case effects with explicit person weights, reporting support.
+$$\widehat w_i=\arg\min_{w\geq0,\;\mathbf{1}'w=1}
+\|x_i-X_0w\|_2^2.$$
 
-`n_neighbors` counts actual donors, with deterministic ties resolved in input
-order. It fixes the ambiguity in a source KDTree query that included the
-treated case among k neighbors. Distance and fitting features are unscaled:
-changing their measurement units can change donor selection and weights.
+There is no intercept. By default, features are all pretreatment outcomes;
+`fit(panel, features=matrix)` replaces them with caller-supplied pretreatment
+features. Predictions use the weighted donor outcome paths. With default
+features and no donor resampling, this optimizer is the same as native
+outcome SCM applied to one individual. The individual workflow adds separate
+eligible panels, person weighting and event-time aggregation through `fit_many`.
 
-This is an independent implementation, not a port of MSCMT. The original ISC
+## Two-Stage Individual Synthetic Control (2SISC)
+
+`TwoStageIndividualSC(n_neighbors=10)` adds an explicit first stage:
+
+1. **Nearest-neighbor donor screening.** From the eligible untreated pool,
+   select up to $k$ donors with the smallest $d_{ij}^2=\|x_i-x_j\|_2^2$.
+2. **Synthetic-control fitting.** Solve ISC's convex-weight problem within
+   that selected group, using the same features. Excluded donors receive
+   zero weight in the returned estimate.
+
+This implements the requested nearest-neighbor grouping stage; it is not
+k-means clustering. `n_neighbors` must be a positive integer and counts
+actual donors, excluding the treated individual. The effective count is
+`min(n_neighbors, panel.n_control)`. Ties at the cutoff follow panel unit
+order. Selected donors retain that order during fitting. When all eligible
+donors are retained, 2SISC agrees with vanilla ISC, including resampled fits
+with the same random seed.
+
+Both stages use pretreatment information. Distance and fitting features are
+unscaled: changing their measurement units can change selection and weights.
+Choose the feature scaling and neighbor count before inspecting treatment
+effects. 2SISC metadata records the requested count, eligible and selected
+counts, selected identities, and `squared_distances` in original donor order
+(`panel.units[:panel.n_control]`). Both estimators record the feature source.
+
+For example, `compare({"ISC": IndividualSC(), "2SISC":
+TwoStageIndividualSC(n_neighbors=10)}, panel)` shows both estimates. With
+individual-specific panels, either class supports `fit_many(panels,
+person_weights=...)`. The older `IndividualSC(n_neighbors=k)` configuration
+is replaced by `TwoStageIndividualSC(n_neighbors=k)`; constructor options
+are keyword-only.
+
+### Resampling and scope
+
+With `n_bootstrap > 0`, both estimators sample donors with replacement and
+average the fitted weights and paths. Vanilla ISC samples from the full
+eligible pool; 2SISC samples from its fixed stage-one group. Screening is
+not repeated, so these draws do not measure selection uncertainty.
+
+These are independent implementations, not ports of MSCMT. The original ISC
 workflow includes case-specific sampling, predictor-weight optimization,
 and survey decisions that are not recreated automatically. Donor bootstrap
 draws describe sensitivity conditional on the selected donor set; they are
 not calibrated confidence intervals or a full survey-design variance.
+Individuals can share donors, so their estimates need not be independent.
 
 ## Synthetic difference-in-differences
 

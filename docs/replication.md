@@ -2,7 +2,7 @@
 
 The four notebooks in `empirical_examples/` use only settings from major
 methodological papers. Each downloads immutable public bytes with requests,
-verifies SHA256, checks a reference specification, and runs all eleven
+verifies SHA256, checks a reference specification, and runs all twelve
 interfaces on a shared outcome panel. Executed outputs are committed.
 
 ## What each check establishes
@@ -103,11 +103,13 @@ precision claim about a causal effect in the original SCUL study.
 
 ## Boundaries of the empirical claims
 
-Applying SCUL or individual SC to a classic aggregate dataset is a new
+Applying SCUL, ISC or 2SISC to a classic aggregate dataset is a new
 application. It does not reproduce the original SCUL scanner-data study,
 the Vagni–Breen motherhood study, or costofcare's survey analysis. The original
 data access and case construction are not supplied by this repository.
-IndividualSC implements a documented costofcare-style estimator; MSCMT
-predictor-weight optimization is not reproduced. Those original empirical
+`IndividualSC` uses each case's full eligible pool; `TwoStageIndividualSC`
+adds nearest-neighbor screening before the same weight fit. Both appear
+separately in every comparison notebook. MSCMT predictor-weight optimization
+is not reproduced. Those original empirical
 estimates therefore remain unverified here, rather than being assigned
 invented replication targets.

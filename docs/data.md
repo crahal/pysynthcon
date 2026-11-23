@@ -45,7 +45,7 @@ Prepare a separate panel for each individual, with donors eligible at that
 individual's treatment date. Use the same time frequency in every panel.
 
 ```python
-from pysynth import IndividualSC, Panel
+from pysynth import IndividualSC, TwoStageIndividualSC, Panel
 
 panels = {
     case: Panel.from_frame(
@@ -55,7 +55,9 @@ panels = {
     )
     for case in onset
 }
-result = IndividualSC(n_neighbors=50).fit_many(panels)
+vanilla = IndividualSC().fit_many(panels)
+result = TwoStageIndividualSC(n_neighbors=50).fit_many(panels)
+print(vanilla.att)      # ISC: full eligible donor pool for each individual
 print(result.att)       # equal-person mean of individual post-period means
 print(result.summary)   # event-time effect, contributing n, weight_sum
 ```
@@ -66,11 +68,15 @@ positive person weights. An event-time mean uses cases observed at that
 event time, so the composition can change across the curve. Counts and
 weight totals are always returned.
 
-For one case, `IndividualSC.fit(panel, features=matrix)` can use stacked
-pre-treatment outcomes and covariates. Columns must match `panel.units`.
-Those features replace the pre-outcome fitting matrix and also determine
-nearest donors; scale disparate variables deliberately. The library cannot
-infer when externally supplied features were measured.
+For one case, either estimator's `fit(panel, features=matrix)` can use stacked
+pretreatment outcomes and covariates. Columns must match `panel.units`.
+Those features replace the pre-outcome fitting matrix; in 2SISC they also
+determine nearest donors. Scale disparate variables deliberately. For example,
+`TwoStageIndividualSC(n_neighbors=50).fit(panel, features=matrix)` screens
+and fits using those features, then predicts using donor outcome paths.
+The library cannot infer when externally supplied features were measured.
+`fit_many` uses each panel's pretreatment outcomes; fit individual panels
+separately when supplying custom feature matrices.
 
 ## Academic downloads
 

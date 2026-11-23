@@ -39,6 +39,10 @@ conformal inference as a common API, time-block resampling, or survey-design
 variance. Selected backend methods expose additional procedures on their
 native fitted object; consult their assumptions and documentation.
 
-`IndividualSC(n_bootstrap=..., random_state=...)` returns donor-resampled
-ATT draws in metadata and averages the fitted paths. Those draws measure
-conditional donor sensitivity, without a general confidence-interval claim.
+`IndividualSC(n_bootstrap=..., random_state=...)` and
+`TwoStageIndividualSC(n_neighbors=..., n_bootstrap=..., random_state=...)`
+return donor-resampled ATT draws in metadata and average the fitted paths.
+ISC resamples its full eligible pool; 2SISC resamples the selected nearest
+donors without repeating screening. Those draws measure conditional donor
+sensitivity and omit selection uncertainty. They are not confidence
+intervals, and shared donors can induce dependence between individual fits.
