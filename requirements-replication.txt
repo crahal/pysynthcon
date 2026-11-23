@@ -1,0 +1,14 @@
+# Reproducible reference environment. Install on Python 3.11 or 3.12.
+numpy==2.0.2
+scipy==1.13.1
+pandas==2.3.3
+scikit-learn==1.7.2
+matplotlib==3.9.4
+pysyncon @ https://github.com/sdfordham/pysyncon/archive/b77dc20e29b012ab03ca1d4caeef7b41861e86f5.zip
+SyntheticControlMethods==1.1.17
+cvxpy==1.6.7
+requests==2.32.5
+nbformat==5.10.4
+nbclient==0.10.2
+ipykernel==6.30.1
+pytest==8.4.2
