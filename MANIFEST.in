@@ -1,0 +1,8 @@
+include README.md CHANGELOG.md CONTRIBUTING.md CITATION.cff THIRD_PARTY_NOTICES.md
+include requirements-replication.txt
+recursive-include docs *.md *.rst *.py
+prune docs/_build
+recursive-include empirical_examples *.ipynb
+recursive-include scripts *.py *.R
+recursive-include tests *.py *.json
+global-exclude __pycache__ *.py[cod]
