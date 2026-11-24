@@ -213,7 +213,12 @@ Rerunning a notebook
 creates local PDF, SVG and PNG exports, CSVs of source comparisons and estimates,
 and fitting diagnostics. Generated files stay outside version control.
 Each notebook also runs the original SDID placebo variance procedure with 200
-resamples. The [plotting guide](docs/plotting.md) explains local regeneration.
+resamples, then repeats that exact plan with a larger iteration budget and
+requires every resampled weight fit to meet the original stopping rule.
+Both standard errors and convergence counts are shown; exact published-reference
+assertions retain the original cap. See [inference convergence](docs/inference.md#handling-iteration-limit-warnings)
+for the explicit budget override and strict check.
+The [plotting guide](docs/plotting.md) explains local regeneration.
 Dots are point estimates, without confidence intervals; shaded time regions
 identify the post-period.
 

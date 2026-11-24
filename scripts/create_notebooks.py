@@ -448,7 +448,7 @@ def build(name, title, description, reference):
             plt.show()
         """),
         markdown("""
-            ## Original SDID placebo inference
+            ## SDID placebo inference and numerical convergence
 
             The original synthdid placebo variance estimator refits donor and time
             weights in each of 200 resamples. The seed is fixed. These standard errors
@@ -458,26 +458,69 @@ def build(name, title, description, reference):
             reproducing the paper's standard error 8.4 at its printed precision.
             The other examples use NumPy seed 0 for reproducible new applications.
 
+            The authors' 10,000-iteration cap can stop some draws before their
+            objective-decrease criterion is met. We retain that reference result,
+            then repeat **the identical 200 resamples** with up to 1,000,000 final-stage
+            iterations and require every resampled weight fit to meet the original
+            criterion. Penalties, tolerance, sparsification and starting weights
+            are unchanged. The larger cap is a numerical extension of the reference
+            software, not its exact finite-iteration replication.
+
+            The table compares both standard errors and capped-draw counts. The
+            original-cap SDID point estimate remains fixed for this comparison;
+            the strict check applies to resampled weight fits. Meeting the original
+            objective-decrease rule is not a global optimality certificate; dual
+            gaps and draw-level diagnostics are exported for inspection. Reference-cap
+            warnings remain visible; an unresolved extended fit stops the notebook.
         """),
         code("""
             if paper_uncertainty is not None:
                 np.testing.assert_allclose(results['Synthetic DID'].att, reference.att, atol=1e-12)
-                uncertainty = paper_uncertainty
+                reference_uncertainty = paper_uncertainty
             else:
-                uncertainty = SyntheticDID().inference(
+                reference_uncertainty = SyntheticDID().inference(
                     panel, method='placebo', replications=200, random_state=0,
                     estimate=results['Synthetic DID'],
                 )
+            uncertainty = SyntheticDID().inference(
+                panel, method='placebo', replications=200,
+                estimate=results['Synthetic DID'],
+                resamples=reference_uncertainty.resamples,
+                max_iter=1_000_000, require_convergence=True,
+            )
+            np.testing.assert_array_equal(uncertainty.resamples, reference_uncertainty.resamples)
+            assert uncertainty.metadata['capped_draws'] == 0
+            budget_comparison = pd.DataFrame([
+                {
+                    'Run': label,
+                    'Final-stage iteration cap': fit.metadata['max_iter'],
+                    'Capped draws': fit.metadata['capped_draws'],
+                    'Placebo standard error': fit.standard_error,
+                    'SE change from reference cap': fit.standard_error - reference_uncertainty.standard_error,
+                    'Largest absolute draw change': np.max(np.abs(fit.draws - reference_uncertainty.draws)),
+                }
+                for label, fit in [('Reference cap', reference_uncertainty), ('Extended cap', uncertainty)]
+            ]).set_index('Run')
+            display(budget_comparison)
+            budget_comparison.to_csv(figure_dir / f'{name}-sdid-budget-comparison.csv')
+            convergence = pd.concat({
+                label: pd.json_normalize(fit.metadata['solver_diagnostics'])
+                for label, fit in [('Reference cap', reference_uncertainty), ('Extended cap', uncertainty)]
+            }, names=['Run', 'Draw']).reset_index()
+            convergence.to_csv(figure_dir / f'{name}-sdid-convergence.csv', index=False)
             inference = pd.Series({
                 'SDID ATT': results['Synthetic DID'].att,
                 'Placebo standard error': uncertainty.standard_error,
                 '95% normal interval': uncertainty.confidence_interval(),
                 'Replications': 200,
+                'Final-stage iteration cap': uncertainty.metadata['max_iter'],
+                'Capped resample fits': uncertainty.metadata['capped_draws'],
             }, name='SDID inference')
             display(inference)
             inference.to_csv(figure_dir / f'{name}-sdid-inference.csv')
             np.savetxt(figure_dir / f'{name}-sdid-resamples.csv', uncertainty.resamples, delimiter=',', fmt='%d')
             np.savetxt(figure_dir / f'{name}-sdid-draws.csv', uncertainty.draws, delimiter=',')
+            np.savetxt(figure_dir / f'{name}-sdid-reference-draws.csv', reference_uncertainty.draws, delimiter=',')
         """),
         markdown("""
             ## Inspect the donor coefficients

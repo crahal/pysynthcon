@@ -223,3 +223,19 @@ under the common folds allowed by these reference SCUL settings. These short
 comparisons illustrate the workflow rather than establish a reliable ranking.
 Some California/Germany SDID validation fits reach the original iteration cap;
 the warnings and fit metadata remain visible, including when SDID is selected.
+
+## SDID resample convergence checks
+
+Each notebook retains its original-cap 200-draw inference result, then replays
+the identical resampling plan with a 1,000,000-iteration final-stage budget and
+`require_convergence=True`. No penalty, tolerance, warm start, sparsification
+or resample is changed. The strict run must meet the original objective-decrease
+rule for both weight fits in every draw; an unresolved fit stops execution.
+The original-cap SDID point estimate remains fixed in this comparison.
+
+The exported budget-comparison table shows both standard errors, their change,
+the largest draw change and capped-draw counts. A separate CSV retains the
+original and extended draw-level convergence diagnostics, including dual gaps.
+This numerical extension is labelled separately from exact finite-iteration
+replication. Original-cap warnings remain visible and are explained alongside
+the comparison; the reference tolerances are unchanged.

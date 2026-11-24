@@ -24,6 +24,7 @@ its authors' software and from applying that method to a new dataset.
 | Local notebook diagnostics ended with a literal backslash-n. | The exported file was not valid JSON. | Write an actual newline; generated-code tests compile every notebook and parse the diagnostic output. |
 | The notebook runner retained completed kernels. | Supplying an external kernel manager disables nbclient's default cleanup, leaving earlier notebooks' processes and channels alive during a long run. | Explicitly request cleanup; real-kernel tests verify shutdown and connection-resource removal after both success and failure. |
 | Documentation called 2SISC an unpublished extension and its default combined screening with the separate MSCMT replication workflow. | Petrillo et al. (2025) already describe the approach; their two-stage Python code fits temporal-mean predictors without resampling donors. | Credit the paper and make that fitting specification the default. Direct KDTree/pysyncon comparison tests verify multivariate fits. Preserve the MSCMT/resampling variant explicitly. |
+| SDID inference warned about capped draws without a direct way to extend an existing fit's inherited budget. | Setting a larger budget on a new estimator object did not affect inference supplied with the old estimate; the resampled fits could remain capped. | Add an explicit inference budget override, actionable warnings and a strict check. Re-run identical plans with the same algorithm, tolerance and penalties; independently verify extended fits against original R. |
 
 The independent Basque run uses R Synth 1.1-10 and the authors' documented
 paper Table 3 preparation. Its 1975–1997 mean effect is **−0.6995627076** thousand 1986 US
@@ -119,7 +120,7 @@ exact R sampling plan.
 
 ## Validation
 
-The complete provisioned suite passes **374 tests**, including online academic
+The complete provisioned suite passes **402 tests**, including online academic
 references and local original-R integration. Independent SDID reruns match all
 inference draws within `2.76e-14`; SCUL screening matches 1,840 direct caret
 column/window decisions. All 16 canonical pysyncon adapter fits pass checked
@@ -127,7 +128,30 @@ termination. Notebook source checks compile every code cell and parse generated
 diagnostic JSON. All four empirical notebooks were re-executed successfully:
 48 comparison fits, twenty embedded figures, ten starts per SyntheticControlMethods
 fit, 50 draws per ISC fit, the authors' non-resampling default 2SISC specification,
-and 200 SDID inference draws per example.
+and two complete 200-draw SDID inference runs per example: the original
+10,000-iteration cap and the identical plan with a 1,000,000-iteration cap.
+
+The extended-budget implementation also matches six independently computed
+original-R bootstrap/placebo draws within `8.9e-15`, with identical stopping
+iterations, including a time-weight fit requiring 123,992 iterations. The
+original point estimate, penalties, tolerance, initialization and sparsification
+remain fixed in this comparison. Strict convergence concerns resampled weight
+fits and does not certify global optimality.
+
+All 800 extended-budget draws meet the original stopping rule for both weight
+fits. The largest observed iteration count is 553,329 in Kansas. The original
+cap results remain available alongside the extended results:
+
+| Example (outcome units) | Capped draws, original / extended | Original-cap SE | Extended-cap SE |
+| --- | ---: | ---: | ---: |
+| Basque (thousand 1986 US dollars) | 83 / 0 | 0.3500574651 | 0.3500762154 |
+| California (packs per capita) | 109 / 0 | 8.3679930814 | 8.3689443673 |
+| Germany (PPP current US dollars) | 114 / 0 | 1488.2162255643 | 1488.6588309995 |
+| Kansas (log GDP per capita) | 156 / 0 | 0.0337620348 | 0.0337703860 |
+
+Each row uses 200 identical original/extended resamples. California retains
+the authors' R sampling plan; its extended SE still rounds to the published
+8.4. Every extended California draw also matches a separate verification run.
 
 The new evaluation sections compare eight candidates using 72 complete fold
 fits and four fresh selected-model fits. Basque, California and Germany each
