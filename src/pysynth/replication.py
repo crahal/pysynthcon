@@ -10,7 +10,7 @@ from io import StringIO
 import numpy as np
 
 from ._r import reference_directory, require_rscript
-from .backends import PySyncon, _require
+from .backends import PySyncon, _checked_upstream_optimizers, _require
 from .datasets import DATASETS
 from .plotting import LiteratureBenchmark, ReferenceComparison
 from .sdid import SyntheticDID
@@ -189,6 +189,13 @@ def reference_comparisons(name, reference, *, additional=None):
         context="Historical predictor specification. This precise target is not a paper-printed estimate.",
     )
     if name == "basque":
+        original_synth = dict(
+            estimate=reference,
+            citation="Paper Table 3 specification · Synth 1.1-10 independent R run",
+            source_url="https://economics.mit.edu/sites/default/files/publications/The%20Economic%20Costs%20of%20Conflict.pdf#page=4",
+            source_label="Original R software",
+            context="16 regional donors; means of annual schooling shares. Independent R target, not paper-printed precision.",
+        )
         return (
             ReferenceComparison(
                 label="Historical SCM",
@@ -204,12 +211,12 @@ def reference_comparisons(name, reference, *, additional=None):
             ),
             ReferenceComparison(
                 label="Historical SCM",
-                reference=-0.6995647842110987,
+                reference=-0.6995627075801111,
                 window=(1975, 1997),
                 units="thousand 1986 US$ per capita",
                 precision=4,
                 reference_precision=4,
-                **upstream,
+                **original_synth,
             ),
         )
     return (
@@ -236,11 +243,31 @@ def reference_comparisons(name, reference, *, additional=None):
     )
 
 
+def _basque_schooling_shares(frame):
+    """Construct the paper's four annual schooling shares for 1964–1969.
+
+    Dataprep subsequently averages these annual shares, reproducing Table 3.
+    The later Synth manual instead normalizes temporally averaged counts;
+    that different convention does not reproduce the paper's schooling table.
+    """
+    columns = ["school.illit", "school.prim", "school.med", "school.high", "school.post.high"]
+    period = frame.year.between(1964, 1969)
+    counts = frame.loc[period, columns].copy()
+    counts["school.high"] += counts.pop("school.post.high")
+    totals = counts.sum(axis=1)
+    if not np.isfinite(counts.to_numpy()).all() or (totals <= 0).any():
+        raise ValueError("Basque schooling predictors require finite counts and positive totals")
+    shares = 100 * counts.div(totals, axis=0)
+    prepared = frame.copy()
+    prepared.loc[period, shares.columns] = shares
+    return prepared
+
+
 def replicate(name, frame):
     """Fit a documented academic example and return its common Estimate.
 
     California uses the SDID paper's no-covariate specification. Basque and
-    Germany use the pysyncon replication specifications; Kansas uses the R
+    Germany use the authors' historical predictor specifications; Kansas uses the R
     augsynth vignette's no-covariate specification. See docs/replication.md
     for exact targets, windows, tolerances and limits on replication claims.
     """
@@ -263,6 +290,7 @@ def replicate(name, frame):
         predictors_op="mean",
     )
     if name == "basque":
+        common["foo"] = _basque_schooling_shares(frame)
         dp = upstream.Dataprep(
             **common,
             predictors=[
@@ -270,7 +298,6 @@ def replicate(name, frame):
                 "school.prim",
                 "school.med",
                 "school.high",
-                "school.post.high",
                 "invest",
             ],
             time_predictors_prior=range(1964, 1970),
@@ -307,6 +334,7 @@ def replicate(name, frame):
         ],
     )
     training_fit = upstream.Synth()
+    _checked_upstream_optimizers(training_fit)
     training_fit.fit(dataprep=train)
     dp = upstream.Dataprep(
         **common,
@@ -319,7 +347,11 @@ def replicate(name, frame):
             ("invest80", [1980], "mean"),
         ],
     )
-    return PySyncon(dataprep=dp, options={"custom_V": training_fit.V}).fit(panel)
+    result = PySyncon(
+        dataprep=dp, options={"custom_V": training_fit.V}, allow_post_predictors=True
+    ).fit(panel)
+    result.metadata["historical_training_optimization"] = training_fit.optimization_diagnostics_
+    return result
 
 
 def check_replication(name, result):
@@ -335,12 +367,18 @@ def check_replication(name, result):
     elif name == "basque":
         value, target, tolerance = (
             result.effects.loc[1975:1997].mean(),
-            -0.6995647842110987,
-            0.025 * 0.6995647842110987,
+            -0.6995627075801111,
+            1e-4,
         )
-        kind = "pysyncon reference ATT, 1975–1997 (not the entire post-period)"
-        assert abs(result.weights["Cataluna"] - 0.850816306) <= 0.025
-        assert abs(result.weights["Madrid (Comunidad De)"] - 0.149183694) <= 0.025
+        kind = "Original R Synth reference ATT, 1975–1997 (16 regions; schooling shares)"
+        if "Spain (Espana)" in result.weights.index:
+            raise AssertionError("Spain's aggregate is not an eligible Basque control region")
+        for donor, published_weight in {
+            "Cataluna": 0.8508,
+            "Madrid (Comunidad De)": 0.1492,
+        }.items():
+            if abs(result.weights[donor] - published_weight) > 1e-4:
+                raise AssertionError(f"Basque published donor weight failed: {donor}")
     elif name == "germany":
         value, target, tolerance = result.att, -1555.1346777620479, 0.025 * 1555.1346777620479
         kind = "pysyncon reference ATT, 1990–2003"
@@ -349,9 +387,10 @@ def check_replication(name, result):
         kind = "R augsynth vignette ATT, log GDP per capita"
     else:
         raise ValueError(f"Unknown replication: {name}")
-    assert abs(value - target) <= tolerance, (
-        f"{name} replication failed: {value} vs {target}, tolerance {tolerance}"
-    )
+    if not np.isfinite(value) or abs(value - target) > tolerance:
+        raise AssertionError(
+            f"{name} replication failed: {value} vs {target}, tolerance {tolerance}"
+        )
     return {
         "source": kind,
         "estimate": float(value),

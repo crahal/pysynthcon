@@ -1,10 +1,18 @@
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from pysynth import Estimate, reference_comparison_table
 from pysynth.datasets import DATASETS, load_dataset
-from pysynth.replication import check_replication, reference_comparisons, replicate
+from pysynth.replication import (
+    _basque_schooling_shares,
+    check_replication,
+    reference_comparisons,
+    replicate,
+)
 
 
 @pytest.mark.network
@@ -15,6 +23,26 @@ def test_academic_reference_specification(name, tmp_path):
     frame = load_dataset(name, cache_dir=tmp_path)
     result = replicate(name, frame)
     check_replication(name, result)
+    if name == "basque":
+        original = json.loads((Path(__file__).parent / "fixtures/basque_synth_r.json").read_text())
+        assert result.weights.index.tolist() == original["donor_names"]
+        np.testing.assert_allclose(result.weights, original["weights"], atol=1e-4, rtol=0)
+        np.testing.assert_allclose(
+            result.counterfactual, original["counterfactual"], atol=1e-4, rtol=0
+        )
+        prepared = _basque_schooling_shares(frame)
+        means = prepared.loc[
+            prepared.year.between(1964, 1969)
+            & (prepared.regionname == "Basque Country (Pais Vasco)")
+        ].mean(numeric_only=True)
+        for column in ["school.illit", "school.prim", "school.med", "school.high"]:
+            assert means[column] == pytest.approx(original["treated_predictors"][column], abs=1e-12)
+        # Independent paper-printed values distinguish annual-share means
+        # from the later software manual's shares of mean counts.
+        np.testing.assert_array_equal(
+            means[["school.illit", "school.prim", "school.med", "school.high"]].round(2),
+            [3.32, 85.97, 7.46, 3.26],
+        )
 
 
 def reference_fit(times, n_pre, effect=-1.0):
@@ -24,18 +52,39 @@ def reference_fit(times, n_pre, effect=-1.0):
     )
 
 
-def test_basque_paper_percentage_is_separate_from_upstream_att():
+def test_basque_schooling_averages_annual_shares_and_combines_top_categories():
+    frame = pd.DataFrame(
+        {
+            "regionname": ["region"] * 3,
+            "year": [1964, 1965, 1970],
+            "school.illit": [10.0, 0.0, 1000.0],
+            "school.prim": [0.0, 30.0, 1000.0],
+            "school.med": [0.0, 10.0, 1000.0],
+            "school.high": [0.0, 5.0, 1000.0],
+            "school.post.high": [0.0, 5.0, 1000.0],
+        }
+    )
+    original = frame.copy(deep=True)
+    prepared = _basque_schooling_shares(frame)
+    columns = ["school.illit", "school.prim", "school.med", "school.high"]
+    expected = np.array([[100.0, 0.0, 0.0, 0.0], [0.0, 60.0, 20.0, 20.0]])
+    np.testing.assert_allclose(prepared.loc[:1, columns], expected)
+    pd.testing.assert_series_equal(prepared.loc[2], original.loc[2])
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_basque_paper_percentage_is_separate_from_original_r_att():
     fit = reference_fit(pd.Index(range(1960, 1998)), n_pre=10)
     comparisons = reference_comparisons("basque", fit)
     table = reference_comparison_table(comparisons)
     assert table.window_start.tolist() == [1980, 1975]
     assert table.statistic.tolist() == ["mean_percent_effect", "mean_effect"]
     assert table.approximate.tolist() == [True, False]
-    assert table.reference.tolist() == [-10, -0.6995647842110987]
+    assert table.reference.tolist() == [-10, -0.6995627075801111]
     expected = (-100 / fit.observed.loc[1980:1997]).mean()
     assert table.loc[0, "reproduced"] == pytest.approx(expected)
     assert table.loc[1, "reproduced"] == -1
-    assert "parity_tests/test_synth_basque.py" in table.loc[1, "source_url"]
+    assert "Costs%20of%20Conflict.pdf#page=4" in table.loc[1, "source_url"]
 
 
 def test_german_paper_and_software_targets_retain_different_precision_and_status():

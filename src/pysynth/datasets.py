@@ -26,11 +26,19 @@ class Dataset:
     citation: str
     separator: str = ","
     start: int | None = None
+    excluded_controls: tuple = ()
 
     def panel(self, frame: pd.DataFrame) -> Panel:
         """Build the common-comparison panel, retaining original outcome units."""
         if self.start is not None:
             frame = frame.loc[frame[self.time] >= self.start]
+        # National aggregates can contain the treated region. They are data
+        # series, not eligible independent control regions in the study design.
+        controls = [
+            unit
+            for unit in frame[self.unit].unique()
+            if unit != self.treated_unit and unit not in self.excluded_controls
+        ]
         return Panel.from_frame(
             frame,
             unit=self.unit,
@@ -38,6 +46,7 @@ class Dataset:
             outcome=self.outcome,
             treated_unit=self.treated_unit,
             treatment_time=self.treatment_time,
+            controls=controls,
         )
 
 
@@ -66,6 +75,7 @@ DATASETS = {
         1970,
         "Abadie & Gardeazabal (2003), doi:10.1257/000282803321455188",
         start=1960,
+        excluded_controls=("Spain (Espana)",),
     ),
     "germany": Dataset(
         "germany",

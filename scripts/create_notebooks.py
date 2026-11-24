@@ -14,7 +14,7 @@ EXAMPLES = {
     "basque": (
         "The economic costs of conflict in the Basque Country",
         "GDP per capita, 1960–1997; comparison post-period begins 1970. Outcome: thousands of 1986 US dollars.",
-        "Abadie and Gardeazabal (2003), [AER](https://doi.org/10.1257/000282803321455188). The historical predictor specification is reproduced separately. Check Catalonia/Madrid weights against 0.851/0.149 and the upstream reference ATT of −0.699565 **over 1975–1997**. This window differs from the table's 1970–1997 ATT. The upstream Synth example includes the Spain aggregate in the donor pool; its fitted weight is zero. The paper's approximate 10% headline is not treated as an exact numeric target.",
+        "Abadie and Gardeazabal (2003), [AER](https://doi.org/10.1257/000282803321455188). The authors’ historical predictor specification is reproduced separately: 16 regional donors, excluding Spain’s national aggregate, and four annual education shares averaged over 1964–1969, matching paper Table 3. Check Catalonia/Madrid weights against the published 0.8508/0.1492 and an independent original-R Synth ATT of −0.6995627 **over 1975–1997**. This window differs from the table's 1970–1997 ATT. The paper's approximate 10% headline is not treated as an exact numeric target.",
     ),
     "germany": (
         "German reunification",
@@ -44,7 +44,7 @@ FIGURE_DETAILS = {
         "outcome": "GDP per capita (thousands of 1986 US dollars)",
         "effect": "Effect on GDP per capita (thousands of 1986 US dollars)",
         "units": "thousand 1986 US$",
-        "periods": "1960–1969 pretreatment · 1970–1997 post-treatment · 17 donors",
+        "periods": "1960–1969 pretreatment · 1970–1997 post-treatment · 16 donors",
         "onset": "1970",
         "reference": "Historical SCM counterfactual",
         "reference_note": "Historical predictor specification. The numerical validation uses the 1975–1997 ATT; comparison figures use 1970–1997. The paper's percentage headline is shown above. Shading starts in 1970.",
@@ -238,7 +238,10 @@ def build(name, title, description, reference):
             explicitly named equal-period baseline.
 
             SCUL calls the pinned original R functions and glmnet, selecting
-            `lambda.median` from fold-specific paths. Its rolling validation windows
+            `lambda.median` from fold-specific paths. Its original near-zero-variance
+            screening checks the full series and each training window, so data
+            admissibility can depend on post-period values; lasso fitting and
+            penalty selection use only pretreatment outcomes. Rolling windows
             are stated in code. Basque has only ten pretreatment observations, so
             its validation horizon must be shorter than its 28-period post window.
             Penalized and robust SCM retain the explicit illustrative tuning values
@@ -289,7 +292,7 @@ def build(name, title, description, reference):
                 references = matched_references(results['Augmented SCM'])
             diagnostics = {label: fit.metadata for label, fit in results.items()}
             (figure_dir / f'{name}-diagnostics.json').write_text(
-                json.dumps(diagnostics, indent=2, default=str) + '\\n'
+                json.dumps(diagnostics, indent=2, default=str) + chr(10)
             )
             display_labels = {
                 'ISC (full donor pool)': 'ISC · full donor pool',
@@ -415,8 +418,10 @@ def build(name, title, description, reference):
             and captions through the plotting API before exporting to a journal's
             requirements. Nothing depends on system fonts or an external TeX install.
 
-            `pysynth.placebo_test` provides in-space RMSPE-ratio diagnostics and a rank
-            p-value under exchangeability assumptions; it is not synthdid's placebo
+            `pysynth.placebo_test` provides in-space RMSPE-ratio diagnostics and a
+            rank statistic. The treated and placebo fits have different donor-pool sizes,
+            so exchangeability alone does not make this an exact randomization test.
+            It is not synthdid's placebo
             variance estimator. The original SCUL scanner-data and ISC/costofcare
             survey studies are not reproduced here. Re-run from a fresh kernel to
             reproduce the source checks, estimates and figures together.

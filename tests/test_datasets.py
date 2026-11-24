@@ -2,6 +2,7 @@ import hashlib
 from dataclasses import replace
 from unittest.mock import Mock
 
+import pandas as pd
 import pytest
 import requests
 
@@ -50,3 +51,18 @@ def test_download_hash_mismatch(response):
 def test_unknown_dataset():
     with pytest.raises(ValueError, match="Unknown"):
         load_dataset("unknown")
+
+
+def test_basque_excludes_national_aggregate_from_donors():
+    frame = pd.DataFrame(
+        [
+            (unit, year, 1.0)
+            for unit in ["Spain (Espana)", "Cataluna", "Basque Country (Pais Vasco)"]
+            for year in [1968, 1969, 1970]
+        ],
+        columns=["regionname", "year", "gdpcap"],
+    )
+    panel = DATASETS["basque"].panel(frame)
+    assert panel.units == ("Cataluna", "Basque Country (Pais Vasco)")
+    # Exclusion changes eligibility, not the downloaded source frame.
+    assert "Spain (Espana)" in frame.regionname.values

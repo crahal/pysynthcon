@@ -90,3 +90,8 @@ SHA256 verification. An optional `cache_dir` stores verified bytes; corrupt
 cached bytes raise an error. `DATASETS[name]` exposes the URL, hash, citation,
 outcome labels and treatment convention. Historical covariate missingness
 is retained in the DataFrame; the chosen outcome panel must be complete.
+
+The Basque dataset also contains Spain’s national aggregate. `Dataset.panel`
+excludes it: the original paper’s donor pool consists of the other 16 regions,
+and the aggregate contains the treated Basque Country. The source download is
+retained unchanged.
