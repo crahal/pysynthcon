@@ -66,13 +66,15 @@ python -m sphinx -W --keep-going -b html docs docs/_build/html
 python -m build
 ```
 
-`scripts/create_notebooks.py` regenerates notebook sources and clears outputs.
-Then `scripts/execute_notebooks.py` runs all notebooks in the current Python
-environment, preserving warnings and stopping on failures. Use `--output-dir`
-to inspect a new execution without replacing tracked outputs. Keep one
-notebook per academic setting, not per method. Do not hand-edit numerical
-outputs. Network-dependent tests carry the `network` marker and are excluded
-from the default suite.
+`scripts/create_notebooks.py` regenerates the four empirical notebook sources
+and clears their embedded outputs. The simulation source lives directly in
+`simulated_examples/donor_spillovers.ipynb`. Run `scripts/execute_notebooks.py`
+with the active Python interpreter to execute all five, or use
+`--examples donor_spillovers` for the simulation alone. Use `--output-dir` to
+write executed notebook copies to another directory. Standalone result exports
+always go under the checkout's `outputs/`. Keep one notebook per study. Download
+empirical inputs into memory and generate simulation inputs from a recorded
+seed. Network-dependent tests carry the `network` marker.
 
 Figure changes belong in `pysynth.plotting` or `pysynth.evaluation_plotting`,
 with notebooks calling the public API. Preserve observed-minus-counterfactual
@@ -81,11 +83,11 @@ Do not infer uncertainty from
 variation across estimators. Test artist coordinates and summary values;
 visually review the exported figures at their intended physical dimensions.
 After changes, re-execute every affected notebook and inspect its PDF, SVG
-and PNG exports under `empirical_examples/figures/`. PDF fonts must be
+and PNG exports under `outputs/empirical_examples/<study>/` or
+`outputs/simulated_examples/<study>/`. PDF fonts must be
 embedded, captions must fit the canvas, and common scales must retain
 outlying methods. Commit the executed notebooks with embedded figures;
 generated figure exports, CSVs and diagnostics remain local.
-`--output-dir` also redirects local figure exports.
 
 Keep R source and reference setup/validation utilities under ignored
 `.local/reference/`. Do not embed R source in tracked Python files. The small

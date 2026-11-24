@@ -27,7 +27,7 @@ validation.summary       # pooled RMSE, MAE, bias and prediction/fold counts
 validation.scores        # one row per model and fold, including date boundaries
 validation.predictions   # every held-out observation, prediction and error
 fig, axes = plot_backtest(validation, units="GDP per capita")
-save_figure(fig, "figures/validation")
+save_figure(fig, "outputs/custom/validation")
 ```
 
 Choose windows suitable for your panel; the example needs at least 13
@@ -140,7 +140,7 @@ sensitivity.table      # each model/scenario ATT, change, fit and sign reversal
 sensitivity.summary    # scenario range and largest absolute ATT change
 
 fig, axes = plot_donor_sensitivity(sensitivity, units="GDP per capita")
-save_figure(fig, "figures/donor-sensitivity")
+save_figure(fig, "outputs/custom/donor-sensitivity")
 
 # Study-defined groups can represent shared exposure or questionable eligibility.
 groups = {"exclude adjacent regions": ["Region A", "Region B"]}
@@ -176,3 +176,31 @@ outputs remain local-only under the repository's existing ignore rules.
 All four empirical notebooks demonstrate temporal validation and complete
 single-donor exclusions. They are new analyses of the canonical datasets,
 separate from their published-reference replications.
+
+## A known-effect simulation
+
+The [donor-spillover notebook](https://github.com/crahal/pysynthcon/blob/main/simulated_examples/donor_spillovers.ipynb)
+uses a regional policy with a known effect on the treated region. In each
+replication it generates two versions of the same panel. Both have identical
+pretreatment histories. In one version, four nearby donors also experience
+a post-policy increase of three outcome units.
+
+For SCM fitted on pretreatment outcomes, that increase raises the estimated
+counterfactual by three times the total fitted weight on nearby donors.
+The estimated treatment effect falls by the same amount. Validation sees
+identical data in the two versions, so it cannot detect this change. A named
+group exclusion refits the estimator on distant donors. The known treatment
+effect lets the notebook measure both the predictive cost of that exclusion
+before treatment and its effect on bias after treatment.
+
+Across 200 seeded replications, the full donor pool gives SCM a lower
+average held-out RMSE (1.20 points) than the distant-only pool (3.26).
+With spillovers, the distant-only pool estimates the treatment effect more
+accurately. The root mean squared ATT error is 2.84 points with all donors and 1.95
+with distant donors. The full-pool estimate shifts by −2.78 points on
+average, with a Monte Carlo standard error of 0.013. That standard error
+measures simulation precision across replications.
+
+Run `python scripts/execute_notebooks.py --examples donor_spillovers` to
+regenerate the figures and Monte Carlo tables under
+`outputs/simulated_examples/donor_spillovers/`.

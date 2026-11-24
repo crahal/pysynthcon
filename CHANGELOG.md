@@ -5,6 +5,20 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Simulation and notebook outputs
+
+- Add a seeded, paired regional-policy simulation comparing outcome SCM and
+  DID under donor spillovers. It uses expanding-window validation, a named
+  donor-group exclusion and known potential outcomes to measure estimation error.
+- Write standalone figures, tables and diagnostics from every notebook under
+  the checkout's `outputs/` directory. Export complete empirical donor weights,
+  selection results, replication checks, warnings and software versions.
+  Empirical source data download into memory. Simulation panels are generated
+  in memory from the recorded seed.
+- `scripts/execute_notebooks.py` runs the four empirical studies and the
+  simulation. `--examples` selects studies, and `--output-dir` selects the
+  destination of executed notebook copies.
+
 ### Estimator and replication audit
 
 - Check successful pysyncon simplex solves for a feasible step that improves

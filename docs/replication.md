@@ -154,7 +154,7 @@ python -m pip install -e '.[docs,dev]'
 python .local/reference/scripts/install_r_references.py --library .r-library
 python -m pytest
 python -m pytest -m network
-python scripts/execute_notebooks.py --output-dir /tmp/pysynth-notebooks
+python scripts/execute_notebooks.py --examples basque california germany kansas
 ```
 
 The tested numeric environment uses Python 3.12, NumPy 2.0.2, SciPy 1.13.1,
@@ -221,7 +221,8 @@ new applications of the original algorithm, not original-paper calibrations.
 
 The notebooks retain the academic source comparisons in their tables and
 figure annotations. Runtime, solver diagnostics, and SDID resampling records
-are exported locally alongside the figures. No archived software-output files
+are exported locally alongside the figures under
+`outputs/empirical_examples/<study>/`. No archived software-output files
 are required to run the examples. Floating-point libraries and R package versions are recorded;
 algorithmic parity does not imply bitwise equality across arbitrary machines.
 

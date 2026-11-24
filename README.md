@@ -183,7 +183,7 @@ applicable interfaces on a common outcome panel.
 | [Kansas](empirical_examples/kansas.ipynb) | Ben-Michael et al. (2021) | Authors' Ridge ASCM vignette ATT −0.0401 |
 
 ```bash
-python scripts/execute_notebooks.py
+python scripts/execute_notebooks.py --examples basque california germany kansas
 ```
 
 These notebooks distinguish published specifications, upstream numerical
@@ -197,6 +197,30 @@ weight search; fitting many individuals with additional covariates is more
 costly. The notebooks report elapsed times and full fitting settings so the
 computational work is inspectable.
 
+## Simulation notebook
+
+[Donor spillovers](simulated_examples/donor_spillovers.ipynb) asks whether a
+good pretreatment fit protects an estimate when nearby comparison regions are
+also affected by a policy. The simulation generates paired regional panels
+with a known treatment effect. Each pair shares the same underlying outcomes.
+Only the nearby donors' post-treatment outcomes change. The notebook compares
+pretreatment validation scores with actual estimation errors, then uses named
+donor-group exclusions to refit SCM and DID. It runs 200 replications in Python
+and writes both the draw-level estimates (`paired-estimates.csv`) and the
+averages with Monte Carlo standard errors (`monte-carlo-summary.csv`).
+
+```bash
+python -m pip install -e '.[notebooks]'
+python scripts/execute_notebooks.py --examples donor_spillovers
+```
+
+Run `python scripts/execute_notebooks.py` for all five notebooks. Empirical
+inputs download into memory on each run, and the simulation generates its
+inputs from a recorded random seed. Local figures, result tables, and numerical
+diagnostics go under `outputs/empirical_examples/<study>/` and
+`outputs/simulated_examples/donor_spillovers/`. The notebooks embed their
+figures for reading on GitHub.
+
 ## Publication figures
 
 Compare fitted estimators with shared-scale effect panels and an aligned
@@ -208,14 +232,14 @@ Matplotlib objects.
 from pysynth import plot_comparison, plot_effects, save_figure
 
 fig, axes = plot_comparison(fits, units="packs per capita")
-save_figure(fig, "figures/california-comparison")  # PDF, SVG and 300 dpi PNG
+save_figure(fig, "outputs/custom/california-comparison")
 
 fig, axes = plot_effects(fits, ylabel="Effect on cigarette sales (packs per capita)")
-save_figure(fig, "figures/california-effects")
+save_figure(fig, "outputs/custom/california-effects")
 ```
 
 See the embedded figures in the [California notebook](empirical_examples/california.ipynb).
-Every notebook displays three reference/comparison figures with **source /
+Each empirical notebook displays three reference/comparison figures with **source /
 reproduction / difference** annotations directly beside the matching curves,
 panels and ATT rows. Separate historical fits receive their own reference row
 or panel. Two further figures label pretreatment validation and donor-exclusion
@@ -225,7 +249,7 @@ and audit tables. Local export paths follow each figure. Use
 Rerunning a notebook
 creates local PDF, SVG and PNG exports, CSVs of source comparisons and estimates,
 and fitting diagnostics. Generated files stay outside version control.
-Each notebook also runs the original SDID placebo variance procedure with 200
+Each empirical notebook also runs the original SDID placebo variance procedure with 200
 resamples, then repeats that exact plan with a larger iteration budget and
 requires every resampled weight fit to meet the original stopping rule.
 Both standard errors and convergence counts are shown; exact published-reference

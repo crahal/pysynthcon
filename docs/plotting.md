@@ -42,7 +42,7 @@ fig, axes = plot_comparison(
     subtitle="1989–2000 post-treatment; identical outcomes and donor eligibility",
     units="packs per capita",
 )
-save_figure(fig, "figures/california-comparison")
+save_figure(fig, "outputs/custom/california-comparison")
 
 fig, axes = plot_effects(
     fits, ncols=3,
@@ -50,7 +50,7 @@ fig, axes = plot_effects(
     ylabel="Effect on cigarette sales (packs per capita)",
     xlabel="Year",
 )
-save_figure(fig, "figures/california-effects")
+save_figure(fig, "outputs/custom/california-effects")
 ```
 
 The figures preserve dictionary order; they do not rank estimators by effect
@@ -103,7 +103,7 @@ ax = plot_paths(
     intervention_label="1989",
     note="Shading marks the post-treatment period. No uncertainty interval is shown.",
 )
-save_figure(ax.figure, "figures/california-reference")
+save_figure(ax.figure, "outputs/custom/california-reference")
 ```
 
 Observed and counterfactual paths differ by both line style and color, so
@@ -120,11 +120,11 @@ captions on that parent figure yourself.
 fig, axes = plot_comparison(fits, figsize=(7.2, 4.2), units="packs per capita")
 
 # All three files, at the same physical dimensions:
-paths = save_figure(fig, "figures/main-result")
+paths = save_figure(fig, "outputs/custom/main-result")
 
 # One explicit format, or a custom selection:
-save_figure(fig, "figures/main-result.pdf")
-save_figure(fig, "figures/main-result", formats=("svg", "png"), dpi=600)
+save_figure(fig, "outputs/custom/main-result.pdf")
+save_figure(fig, "outputs/custom/main-result", formats=("svg", "png"), dpi=600)
 ```
 
 Figure sizes are in inches. Notebook exports use a 7.2-inch width, appropriate
@@ -146,7 +146,7 @@ import matplotlib.pyplot as plt
 with publication_style():
     fig, ax = plt.subplots(figsize=(3.5, 2.5), layout="constrained")
     fits["SDID"].plot(ax=ax, effects=True, ylabel="Effect (packs per capita)")
-    fig.savefig("figures/single-column.pdf")
+    save_figure(fig, "outputs/custom/single-column.pdf")
 ```
 
 Styling is scoped: global Matplotlib settings are restored after each call.
@@ -268,7 +268,7 @@ published = LiteratureBenchmark(
     window=(1989, 2000),
 )
 fig, axes = plot_comparison(fits, benchmark=published, units="packs per capita")
-save_figure(fig, "figures/comparison-with-literature")
+save_figure(fig, "outputs/custom/comparison-with-literature")
 ```
 
 A numeric `value` adds a dotted guide to the ATT axis and to the post-period
@@ -306,7 +306,9 @@ or adding long custom text; Matplotlib artists remain editable.
 Each academic notebook saves a reference path, an ATT/RMSE comparison, an
 effect-panel figure, a validation figure and a donor-sensitivity figure,
 plus comparison and source-check values as CSV under
-`empirical_examples/figures/<example>/`. These generated files stay local and
+`outputs/empirical_examples/<example>/`. The donor-spillover simulation writes
+its plots and tables to `outputs/simulated_examples/donor_spillovers/`.
+These generated files stay local and
 are excluded from version control and source distributions. The committed
 notebooks embed all five figures, with local export paths and literature links immediately
 after each figure. Full setup notes, specification details and audit tables
@@ -332,7 +334,7 @@ See the [evaluation guide](evaluation.md) for complete examples.
 
 ```bash
 python scripts/execute_notebooks.py
-# Write executed notebooks and local figure exports to another directory:
+# Save executed notebook copies elsewhere. Result files still go under ./outputs/.
 python scripts/execute_notebooks.py --output-dir /tmp/pysynth-rendered
 ```
 

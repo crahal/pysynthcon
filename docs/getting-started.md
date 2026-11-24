@@ -15,7 +15,7 @@ SCUL and ISC use the original R implementations; follow the
 from pysynth import SyntheticControl, SyntheticDID, compare
 from pysynth.datasets import DATASETS, load_dataset
 
-frame = load_dataset("california", cache_dir=".data-cache")
+frame = load_dataset("california")
 panel = DATASETS["california"].panel(frame)
 sdid = SyntheticDID().fit(panel)
 scm = SyntheticControl().fit(panel)

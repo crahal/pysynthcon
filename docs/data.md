@@ -93,8 +93,10 @@ adaptation is not the default original ISC procedure. Install the
 
 `load_dataset("california" | "basque" | "germany" | "kansas")` uses requests,
 an immutable source commit, explicit HTTP timeout, status checking, and
-SHA256 verification. An optional `cache_dir` stores verified bytes; corrupt
-cached bytes raise an error. `DATASETS[name]` exposes the URL, hash, citation,
+SHA256 verification. By default the download stays in memory. All empirical
+notebooks use in-memory downloads, and the simulation generates its panel in
+memory on each run. Library callers can explicitly request a disk cache with
+`cache_dir`. Corrupt cached bytes raise an error. `DATASETS[name]` exposes the URL, hash, citation,
 outcome labels and treatment convention. Historical covariate missingness
 is retained in the DataFrame; the chosen outcome panel must be complete.
 
