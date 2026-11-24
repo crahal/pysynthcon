@@ -46,6 +46,10 @@
     *Proceedings of AISTATS*, PMLR 258, 109–117.
     [Paper and software](https://proceedings.mlr.press/v258/rho25a.html).
 
+12. Engelbrektson, O. (2021). Why Synthetic Control estimators are biased and
+    what to do about it: Introducing Relaxed and Penalized Synthetic Controls.
+    Working paper. [Preprint](https://arxiv.org/abs/2111.10784).
+
 The two-stage approach is attributed to Petrillo et al.; the default follows
 their Python mean-predictor fitting specification. An explicitly selected
 MSCMT/resampling variant remains available.

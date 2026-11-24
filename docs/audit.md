@@ -5,6 +5,14 @@ empirical comparisons, numerical failure handling and reproducibility of the
 library. It distinguishes reproduction of a paper's study from reproduction of
 its authors' software and from applying that method to a new dataset.
 
+## Current method catalog
+
+Each empirical example compares eleven specifications. Predictor-based SCM
+uses means over three pretreatment blocks. Ridge-augmented SCM, penalized SCM,
+robust SCM and differenced SCM have separate interfaces and paper citations.
+The comparison counts and backend-specific changes recorded in the dated
+audits below describe the earlier notebook lineup. [Methods](methods.md)
+
 ## November 24 follow-up audit
 
 We tested the public estimator, comparison, inference and plotting interfaces
@@ -15,7 +23,7 @@ could conclude from the output.
 
 | Reproducible finding | Correction |
 | --- | --- |
-| Adding a common level of 100,000 to an exact two-donor blend moved the fitted weights from 0.6/0.4 to roughly 0.5/0.5 even though pysyncon's solver reported success. | Check the attainable improvement along a feasible simplex direction. Recover the same inner quadratic if that improvement exceeds its tolerance. In the Basque common-sample pysyncon SCM this changes the ATT from −0.973575 to −0.993457 thousand 1986 US dollars per capita. |
+| Adding a common level of 100,000 to an exact two-donor blend moved the fitted weights from 0.6/0.4 to roughly 0.5/0.5 even though pysyncon's solver reported success. | Check the attainable improvement along a feasible simplex direction. Recover the same inner quadratic if that improvement exceeds its tolerance. In the Basque common-sample all-lag predictor SCM this changes the ATT from −0.973575 to −0.993457 thousand 1986 US dollars per capita. |
 | A zero ridge penalty on a singular AugSynth design could produce weights summing to −14. A different, valid fit could crash while reporting a ratio with a zero denominator. | Check the rank required by the reference inverse. Retain completed weights when only the descriptive scaled imbalance is undefined. |
 | A missing final counterfactual could silently drop a period from the ATT and produce a placebo rank. An estimator reusing the same output buffer could overwrite earlier donor-exclusion fits. | Check labels, coverage and finite outcomes before scoring. Snapshot each sensitivity fit and placebo fit. Test explicit donor labels and extreme ratios. |
 | With `CA`, `C` and `A` in the data, `treated_units="CA"` could select two treated units and move California into the donor pool. | Reject bare strings in arguments for collections of unit IDs. Both `treated_unit="CA"` and `treated_units=["CA"]` identify California correctly. |
@@ -28,7 +36,7 @@ software tolerances. Optimizer checks establish feasibility or detect a
 specific improvement. The nested predictor-weight problem can still have
 multiple solutions.
 
-Among the 48 common-sample rows, only the Basque pysyncon SCM fit changed
+Among the 48 common-sample rows, only the Basque all-lag predictor SCM fit changed
 at the precision of the exported estimates. Its pretreatment RMSE fell from
 0.064482 to 0.064345 thousand 1986 US dollars per capita. The number of donor
 weights above the reporting threshold of `1e-6` fell from five to three. The separately
@@ -91,7 +99,7 @@ they are applications of the estimators, not additional published targets.
 | Basque, ISC | −0.816493 | −0.859736 | Remove Spain's aggregate from eligible donors. |
 | Basque, augmented SCM | −1.226881 | −1.289182 | Use the corrected regional donor pool. |
 | Germany, outcome SCM | −1,304.70 | −1,297.47 | Correct the scale-dependent numerical objective. |
-| Germany, pysyncon SCM | −1,448.65 | −1,355.82 | Recover the previously unsuccessful outer optimization. |
+| Germany, all-lag predictor SCM | −1,448.65 | −1,355.82 | Recover the previously unsuccessful outer optimization. |
 | Germany, augmented SCM | −1,495.09 | −1,333.11 | Recover unsuccessful inner quadratic solves. |
 
 Basque units are thousands of 1986 US dollars per capita; Germany units are

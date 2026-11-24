@@ -77,7 +77,7 @@ Each array has `panel.n_pre` rows and columns in `panel.units` order. MSCMT
 uses each series as a predictor group, alongside the pretreatment outcome,
 and learns predictor importance using its original optimization. Default 2SISC
 screens on the stacked, unscaled predictor series, then matches their temporal
-means through the authors' pysyncon specification. Scaling disparate variables
+means through the authors' second-stage predictor specification. Scaling disparate variables
 is an explicit departure from the raw-distance reference. Only pretreatment
 measurements should be supplied.
 

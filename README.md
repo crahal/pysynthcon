@@ -14,7 +14,7 @@
 
 **[Quick start](#quick-start) · [Five worked examples](#five-worked-examples) · [Estimators](#estimators) · [Documentation](#documentation)**
 
-PySynthCon lets you fit several synthetic controls to the same panel and see how the estimated effect changes with the method or donor pool. Compare held-out pretreatment predictions, refit after excluding donors, and put published benchmarks beside the estimates that reproduce them. The library builds on [pysyncon](https://github.com/sdfordham/pysyncon) and [SyntheticControlMethods](https://pypi.org/project/SyntheticControlMethods/).
+PySynthCon lets you fit several synthetic controls to the same panel and see how the estimated effect changes with the method or donor pool. Compare held-out pretreatment predictions, refit after excluding donors, and put published benchmarks beside the estimates that reproduce them.
 
 ## Quick start
 
@@ -56,7 +56,7 @@ For your own data, `Panel.from_frame` takes unit, time and outcome columns, an e
 | [Kansas · tax cuts](empirical_examples/kansas.ipynb) | Match the authors’ ridge-augmented SCM vignette at −0.0401 log points and check all 16 quarterly effects. |
 | [Simulation · donor spillovers](simulated_examples/donor_spillovers.ipynb) | Across 200 economies with a known +6-point effect, spillovers shift full-pool SCM by −2.78 points on average while its pretreatment fit stays identical. |
 
-The four empirical notebooks check the historical specification, then compare twelve estimator interfaces on a common panel. Each downloads hash-verified data into memory. The simulation generates its own data and runs entirely in Python. Figures are embedded in the notebooks. Executing them also writes PDF, SVG, PNG and numerical tables under `outputs/empirical_examples/<study>/` or `outputs/simulated_examples/donor_spillovers/`. [Reference targets and tolerances](docs/replication.md) · [Figure exports](docs/plotting.md)
+The four empirical notebooks check the historical specification, then compare eleven specifications on a common panel. Each downloads hash-verified data into memory. The simulation generates its own data and runs entirely in Python. Figures are embedded in the notebooks. Executing them also writes PDF, SVG, PNG and numerical tables under `outputs/empirical_examples/<study>/` or `outputs/simulated_examples/donor_spillovers/`. [Reference targets and tolerances](docs/replication.md) · [Figure exports](docs/plotting.md)
 
 ```bash
 python -m pip install -e ".[notebooks]"
@@ -67,17 +67,21 @@ For all five notebooks, use Python 3.11 or 3.12, install the [pinned replication
 
 ## Estimators
 
-| Family | Python interface | Specification |
+| Method | Python interface | What determines the counterfactual |
 | --- | --- | --- |
-| Outcome SCM | `SyntheticControl()` | Convex donor weights matching pretreatment outcomes, with optional ridge regularization. |
-| SCUL | `SCUL()` | Lasso with rolling-origin tuning, signed weights and an intercept. |
-| Individual synthetic control | `IndividualSC()` | Vanilla ISC fits each individual against the full eligible pool using MSCMT and 50 donor resamples by default. |
-| Two-stage individual synthetic control | `TwoStageIndividualSC(n_neighbors=10)` | 2SISC screens nearest neighbors on pretreatment features, then fits the authors’ mean-predictor SCM in that group. |
-| SDID and DID | `SyntheticDID()`, `DifferenceInDifferences()` | Native Python fits for simultaneous treatment. SDID supports bootstrap, jackknife and placebo inference. |
-| pysyncon | `PySyncon("synth")` | Predictor-based SCM. Select `"augsynth"`, `"pensynth"` or `"robust"` for the augmented, penalized or robust fit. |
-| SyntheticControlMethods | `SCM("synth")`, `SCM("diffsynth")` | Classical and differenced SCM with all pre-outcome lags, ten starts and checked optimizer recovery. |
+| Outcome-matching SCM | `SyntheticControl()` | Convex weights match the full pretreatment outcome path, with equal weight on each period. This is an outcome-only specification of [classical SCM](https://doi.org/10.1198/jasa.2009.ap08746). |
+| Predictor-based SCM | `PredictorSyntheticControl()` | Convex weights balance predictors. Their relative importance can be fitted against pretreatment outcomes. [Abadie & Gardeazabal (2003)](https://doi.org/10.1257/000282803321455188) · [Abadie, Diamond & Hainmueller (2010)](https://doi.org/10.1198/jasa.2009.ap08746) |
+| Ridge-augmented SCM | `AugmentedSyntheticControl()` | A ridge outcome model corrects residual imbalance. Donor weights can be negative. [Ben-Michael, Feller & Rothstein (2021)](https://doi.org/10.1080/01621459.2021.1929245) |
+| Penalized SCM | `PenalizedSyntheticControl(lambda_=0.01)` | A pairwise penalty discourages weight on donors far from the treated unit in predictor space. [Abadie & L’Hour (2021)](https://doi.org/10.1080/01621459.2021.1971535) |
+| Differenced SCM | `DifferencedSyntheticControl()` | Fit changes, then restore the average pretreatment level gap. The default uses zero pairwise penalty. [Engelbrektson (2021), working paper](https://arxiv.org/abs/2111.10784) |
+| Robust SCM | `RobustSyntheticControl(lambda_=0.1, sv_count=3)` | Singular-value truncation denoises donor outcomes. Ridge weights fitted before treatment combine the denoised donor series. [Amjad, Shah & Shen (2018)](https://jmlr.org/papers/v19/17-777.html) |
+| SCUL | `SCUL()` | Lasso with rolling-origin tuning, signed weights and an intercept. [Hollingsworth & Wing (2020)](https://doi.org/10.31235/osf.io/fc9xt) |
+| Individual synthetic control | `IndividualSC()` | Fit each treated individual against the full eligible donor pool. [Vagni & Breen (2021)](https://academic.oup.com/esr/article/37/5/834/6325498) |
+| Two-stage individual synthetic control | `TwoStageIndividualSC(n_neighbors=10)` | Screen the nearest donors on pretreatment features, then fit SCM in that group. [Petrillo et al. (2025)](https://eprints.whiterose.ac.uk/id/eprint/224118/1/Binder2025004.pdf) |
+| Synthetic difference-in-differences | `SyntheticDID()` | Weight both donors and pretreatment periods. [Arkhangelsky et al. (2021)](https://doi.org/10.1257/aer.20190159) |
+| Difference-in-differences | `DifferenceInDifferences()` | The comparison baseline uses uniform weights across donors and pretreatment periods. |
 
-Install `python -m pip install -e ".[backends]"` for the two adapter families and the default 2SISC fit. The two-stage specification follows Petrillo et al. (2025). [Method definitions and attribution](docs/methods.md) · [Backend details](docs/backends.md)
+The penalty and rank values shown above are example choices. Install `python -m pip install -e ".[backends]"` for predictor-based, augmented, penalized and differenced SCM and the default 2SISC fit. [Method definitions and tuning](docs/methods.md) · [Implementation credits and backend details](docs/backends.md)
 
 ## Compare specifications
 

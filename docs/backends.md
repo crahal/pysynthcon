@@ -1,52 +1,41 @@
-# Upstream compatibility and extensions
+# Estimator implementations and compatibility
 
-The adapters delegate estimation to the two requested primary libraries and
-convert their outputs to `Estimate`. Backend dependencies remain optional.
-`adapter.backend_` exposes the fitted upstream object for advanced diagnostics.
-This attribute is established only after successful fitting.
+Install the optional numerical backends with `pip install -e '.[backends]'`.
+Each estimator returns the same `Estimate` type. For statistical definitions
+and the original papers, see the [methods guide](methods.md).
 
-## pysyncon
+## Predictor-based, augmented and penalized SCM
 
-The `backends` extra pins commit
-`b77dc20e29b012ab03ca1d4caeef7b41861e86f5` (version 1.7.0), because its
-augmented-SCM replication fixes are newer than older releases. The replication
-requirements pin NumPy/SciPy as well: nested optimization can vary by BLAS,
-CPU and package versions. Routine core functionality is not tied to those
-numerical environment pins.
+These estimators use the checked routines from Stiofán Fordham's
+[pysyncon](https://github.com/sdfordham/pysyncon/tree/b77dc20e29b012ab03ca1d4caeef7b41861e86f5).
+The replication requirements pin this revision and the numerical libraries
+used for the published examples.
 
 ```python
-from pysynth import PySyncon
+from pysynth import (
+    AugmentedSyntheticControl, PenalizedSyntheticControl, PredictorSyntheticControl,
+)
 
-aug = PySyncon("augsynth").fit(panel)
-pen = PySyncon("pensynth", options={"lambda_": 0.01}).fit(panel)
-robust = PySyncon("robust", options={"lambda_": 0.1, "sv_count": 3}).fit(panel)
+# Pretreatment predictor windows are supplied as original Panel time labels.
+pre = list(panel.times[:panel.n_pre])
+mid = len(pre) // 2
+predictor = PredictorSyntheticControl(predictor_windows=[pre[:mid], pre[mid:]])
+predictor_fit = predictor.fit(panel)
+ridge_augmented = AugmentedSyntheticControl().fit(panel)
+penalized = PenalizedSyntheticControl(lambda_=0.01).fit(panel)
 ```
 
-Without a custom Dataprep, synth and pensynth use individual pre-outcomes as
-predictors. Classical SCM estimates V with the full upstream nested
-optimization; it no longer injects a fixed V. PenalizedSynth uses the original
-method's identity metric unless the caller explicitly supplies another metric.
-AugSynth uses the
-no-covariate Ridge specification, with its upstream cross-validation. The
-authors’ `augsynth` code omits the last possible holdout block; that convention
-and its one-standard-error selection are deliberately retained. An explicit
-zero ridge penalty requires a centered design with full row rank. With
-dependent predictor rows, choose a positive penalty. Residualizing auxiliary
-covariates requires linearly independent centered covariates. When uniform
-weights already balance outcomes or covariates exactly, the corresponding
-scaled imbalance has a zero denominator. PySynthCon preserves the fitted weights
-and reports NaN for that diagnostic.
-
-RobustSynth requires explicit ridge and singular-value truncation choices;
-it uses all donor periods for its denoising step and predicts from the
-denoised matrix, following the paper’s Algorithm 1. Because `Panel` requires
-complete data, observed zeros count as observations: the observation fraction
-is one. Threshold selection checks every singular value. A least-squares
-form of the ridge solve avoids squaring the condition number and also handles
-zero-penalty rank-deficient designs. The exposed object records the denoised
-matrix, singular values and retained rank. This corrects the pinned upstream
-missingness/truncation behavior; unmodified upstream predictions can differ
-on affected inputs.
+Predictor SCM estimates the relative importance of the predictors in a nested
+optimization or accepts a diagonal metric through `custom_V`. Penalized SCM
+uses identity by default after standardizing the predictors. Ridge-augmented
+SCM uses the no-covariate specification by default for a plain panel.
+Its pretreatment cross-validation follows the reference implementation’s
+holdout blocks and one-standard-error rule. An explicit zero ridge penalty
+requires a centered design with full row rank. Residualizing auxiliary
+covariates requires linearly independent centered covariates. If uniform
+weights already balance a predictor exactly, the corresponding scaled
+imbalance can have a zero denominator. The fit retains its weights and reports
+NaN for that diagnostic.
 
 Internally generated data use integer times so quarterly or date-labelled
 panels do not encounter upstream integer-calendar assumptions. Labels are
@@ -59,10 +48,10 @@ replication uses this exception for its published 1990 convention. The caller
 remains responsible for which covariates are substantively eligible.
 
 ```python
-# dp is a pysyncon.Dataprep with your predictor and special-predictor choices.
-adapter = PySyncon("synth", dataprep=dp, options={"optim_method": "Nelder-Mead"})
-result = adapter.fit(panel)
-print(adapter.backend_.summary())
+# dp supplies the study's custom predictors and observation windows.
+estimator = PredictorSyntheticControl(dataprep=dp, optim_method="Nelder-Mead")
+result = estimator.fit(panel)
+print(estimator.backend_.summary())
 ```
 
 Both nested optimization stages now check solver termination and simplex
@@ -78,13 +67,28 @@ objective tolerance, CLARABEL refits the same quadratic and records the
 reason in `metadata["optimization"]["inner_recoveries"]`. This matters when
 predictors have large common levels relative to the differences among donors.
 
-Custom backend fit options are passed through; unsupported options raise.
-Backend-specific uncertainty procedures are available on the exposed object
-where supported, but are not presented as a uniform PySynthCon interval.
+For existing code that passes backend-specific fit options, the low-level
+`PySyncon` selector remains available. The named estimators expose their
+statistical choices directly. Backend-specific uncertainty procedures on a
+fitted upstream object retain their own definitions.
 
-## SyntheticControlMethods
+## Robust SCM
 
-Version 1.1.17 needs local compatibility handling with modern pandas/SciPy:
+`RobustSyntheticControl(lambda_=0.1, sv_count=3)` uses NumPy for truncated
+singular-value denoising and the ridge fit. Both training and prediction use
+the denoised donor matrix. With a complete panel all observed zeros count as
+observations. The solver also supports a zero ridge penalty and a
+rank-deficient design. [Amjad, Shah & Shen (2018), Algorithm 1](https://jmlr.org/papers/v19/17-777.html)
+
+## Differenced SCM and the alternative classical solver
+
+`DifferencedSyntheticControl()` uses the unpenalized specification in
+[Engelbrektson’s 2021 working paper](https://arxiv.org/abs/2111.10784).
+`SCM("synth")` remains a lower-level alternative implementation of classical
+SCM. PySynthCon uses version 1.1.17 of the author's
+[SyntheticControlMethods](https://github.com/OscarEngelbrektson/SyntheticControlMethods)
+software for these routines. The following adjustments support modern pandas
+and SciPy:
 
 - Its predictor loss transposes a column target, causing a predictor-by-predictor
   broadcast residual. The adapter supplies the intended row target so the
@@ -104,8 +108,8 @@ Version 1.1.17 needs local compatibility handling with modern pandas/SciPy:
 The adapter constructs fixed pre-outcome lag predictors plus upstream's
 outcome-mean predictor. `n_lags=None` uses every pre-period, while an integer
 chooses at most that many evenly spaced lags as an explicit alternative
-predictor specification. The notebooks use **every** pretreatment lag and
-**ten** optimization starts, including all 89 Kansas pretreatment quarters.
+predictor specification. The notebooks’ differenced specification uses every pretreatment lag and
+ten optimization starts, including all 89 Kansas pretreatment quarters.
 It does not monkey-patch global functions or modify
 the installed package. Differenced SCM applies the upstream mean pre-gap
 level correction. These choices are recorded in metadata, and tests compare

@@ -27,11 +27,20 @@ Core and reference methods
 .. automodule:: pysynth.sdid
    :members:
 
-Optional backends
------------------
+Published and working-paper SCM specifications
+----------------------------------------------
 
 .. automodule:: pysynth.backends
-   :members:
+   :members: PredictorSyntheticControl, AugmentedSyntheticControl, PenalizedSyntheticControl, RobustSyntheticControl, DifferencedSyntheticControl
+
+Backend compatibility
+---------------------
+
+.. autoclass:: pysynth.backends.PySyncon
+   :members: fit
+
+.. autoclass:: pysynth.backends.SCM
+   :members: fit
 
 Publication figures
 -------------------

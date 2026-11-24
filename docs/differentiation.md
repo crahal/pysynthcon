@@ -16,7 +16,7 @@ feature cannot be implemented with another package.
 
 | Project | Existing strengths | PySynthCon's additional role |
 |---|---|---|
-| [pysyncon](https://sdfordham.github.io/pysyncon/) | Classical, augmented, robust and penalized SCM; placebo tests, conformal intervals and academic examples. | Integrates those estimators with SCUL, MSCMT-based individual controls and SDID in a common result and comparison workflow. |
+| [pysyncon](https://sdfordham.github.io/pysyncon/) | Classical, augmented, robust and penalized SCM; placebo tests, conformal intervals and academic examples. | Compares these method families with SCUL, individual controls and SDID using the same sample, diagnostics and result format. |
 | [SyntheticControlMethods](https://github.com/OscarEngelbrektson/SyntheticControlMethods) | SCM and differenced SCM, predictor balance, effect plots and in-space/in-time placebos. | Applies the same study definition and diagnostics to this backend and the other estimator families, with checked optimizer recovery. |
 | [synthdid](https://synth-inference.github.io/synthdid/reference/index.html) | SC/DID/SDID estimation, bootstrap/jackknife/placebo variance, weight diagnostics and multi-estimate plots. | Supplies validated Python point estimation and inference alongside the other methods, including explicit paper-versus-software conventions. |
 | [CausalPy](https://causalpy.readthedocs.io/en/latest/notebooks/sensitivity_checks.html) | A broad causal-analysis framework with donor deletion, convex-hull checks and placebo diagnostics. | Focuses on comparisons across the specific classical, lasso, individual and SDID reference algorithms supported here. Donor deletion and model diagnostics themselves are established tools. |
@@ -62,7 +62,7 @@ print(validation.best_model)
 `scores` records the individual fits and `predictions` retains held-out paths.
 `select_estimator` runs this comparison and fits its selected candidate on the
 complete panel, returning both the validation results and final estimate.
-The 2SISC candidates require the optional pysyncon backend. Each value of $k$
+The 2SISC candidates require the `backends` extra. Each value of $k$
 is a research specification, not a reduction of the optimizer's search budget.
 
 Validation-period donor outcomes remain available because synthetic control

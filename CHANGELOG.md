@@ -5,6 +5,17 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Estimator attribution
+
+- Give predictor-based, ridge-augmented, penalized and robust SCM their own
+  public classes and cite the original methodology for each. Expose the
+  differenced specification under its own name and identify its working-paper
+  source. Existing backend selectors remain available for compatibility.
+- Compare each named specification once in the empirical notebooks. Classical
+  predictor SCM uses three prespecified pretreatment outcome means. The
+  historical fits keep their original predictor designs. Germany’s figures
+  cite the paper’s approximate annual GDP effect.
+
 ### Documentation and figures
 
 - Set figure titles in STIX Two Text and labels, ticks and estimates in

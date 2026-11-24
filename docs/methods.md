@@ -18,11 +18,83 @@ has equal importance. The solver uses analytic gradients, a common numerical
 rescaling, and explicit convergence failures. Result metadata includes the
 convex optimality-gap upper bound in original objective units and in scaled
 units. This diagnoses possible suboptimality; it is not a certificate for the
-separate nonconvex predictor-weight search. `ridge` is not Abadie and
-L'Hour's pairwise-distance penalty; use `PySyncon("pensynth")` for that method.
-For classical nested optimization over predictor importance, pass a
-`pysyncon.Dataprep` to the `PySyncon` adapter. Neither selecting predictors
-nor a global optimum of the nested nonconvex problem is automatic.
+separate nonconvex predictor-weight search. The optional `ridge` term
+penalizes the size of the weight vector. The pairwise donor penalty has a
+separate estimator below. [Abadie, Diamond & Hainmueller (2010)](https://doi.org/10.1198/jasa.2009.ap08746)
+
+## Predictor-based synthetic control
+
+`PredictorSyntheticControl` balances treated-unit predictors $x_1$ against donor
+predictors $X_0$. For a diagonal predictor-importance matrix $V$, it minimizes
+$(x_1-X_0w)'V(x_1-X_0w)$ over nonnegative weights summing to one. By default,
+an outer search selects $V$ using pretreatment outcome fit. The nested search
+can have local optima. The Basque historical replication supplies the original
+covariates. [Abadie & Gardeazabal (2003)](https://doi.org/10.1257/000282803321455188)
+· [Abadie, Diamond & Hainmueller (2010)](https://doi.org/10.1198/jasa.2009.ap08746)
+
+With a `Panel` alone, each pretreatment outcome is a predictor. Pass
+`predictor_windows` to take one mean per block of time labels, or `dataprep`
+for a custom design with covariates. The common-panel comparisons use three
+chronological blocks specified before fitting. These are example predictor
+choices. Several donor mixtures can match three block means, particularly
+with a large donor pool. Report the chosen windows when interpreting an ATT.
+The historical replication in each notebook documents its own design.
+
+## Ridge-augmented synthetic control
+
+`AugmentedSyntheticControl` starts with SCM weights and uses a ridge outcome
+model to adjust for the remaining pretreatment imbalance. The adjusted weights
+can be negative. The default outcome-only fit chooses the ridge penalty by
+pretreatment cross-validation with the reference one-standard-error rule.
+Supply `lambda_` to fix it. The Kansas notebook checks the authors’ vignette
+against both its average and its 16 quarterly effects. [Ben-Michael, Feller & Rothstein (2021)](https://doi.org/10.1080/01621459.2021.1929245)
+
+## Penalized synthetic control
+
+`PenalizedSyntheticControl(lambda_=...)` estimates a synthetic control for one
+treated unit. [Abadie & L’Hour (2021)](https://doi.org/10.1080/01621459.2021.1971535)
+
+For scaled predictors and squared distance
+$d_V(a,b)=(a-b)'V(a-b)$, it minimizes
+
+$$d_V(x_1,X_0w) + \lambda\sum_j w_j\,d_V(x_1,x_j),
+\qquad w\geq 0,\quad \mathbf{1}'w=1.$$
+
+The first term measures how well the weighted combination matches the treated
+unit. The second charges for each contributing donor’s distance from that
+unit. The default metric is identity after predictor standardization.
+Choose a nonnegative penalty. The notebooks use $\lambda=0.01$ as an
+illustrative specification.
+
+## Differenced synthetic control
+
+`DifferencedSyntheticControl()` fits the unpenalized differenced specification
+described by Engelbrektson. The nested fit scores pretreatment outcome changes.
+It reconstructs levels as a weighted donor path plus the mean pretreatment
+gap between that path and the treated unit. The weights are nonnegative and
+sum to one. The author evaluates this specification alongside its penalized
+counterpart in Section 5. [Engelbrektson (2021), working paper, §§4–5](https://arxiv.org/pdf/2111.10784)
+
+The notebooks fix the pairwise penalty at zero, use the entire pretreatment
+window for fitting and retain outcome-lag predictors in levels. These
+single-date lag values are fixed characteristics of each donor. The paper
+also describes selecting predictor importance and the penalty on a held-out
+pretreatment window in Section 4.3. The full-window notebook fit uses no such
+validation split. [Author’s implementation guide](https://github.com/OscarEngelbrektson/SyntheticControlMethods/blob/master/examples/user_guide.ipynb)
+
+## Robust synthetic control
+
+`RobustSyntheticControl` implements the complete-panel case of Algorithm 1.
+It truncates the singular values of the donor matrix across all periods, then
+fits ridge weights to the treated pretreatment path using the denoised donor
+matrix. Prediction uses the denoised donor outcomes, including after
+treatment. The treated unit’s post-treatment outcome never enters the fit.
+The weights can be signed and need not sum to one. [Amjad, Shah & Shen (2018)](https://jmlr.org/papers/v19/17-777.html)
+
+Set a ridge penalty `lambda_` and choose a retained rank (`sv_count`) or a
+singular-value cutoff (`threshold`). The notebooks use rank 3 and ridge 0.1
+as an illustration. A `Panel` contains complete observations, so the paper’s
+observation probability is one and recorded zeros are observed values.
 
 ## SCUL
 
@@ -141,13 +213,13 @@ specification of the authors' [Python `sc_b` function](https://github.com/centre
    supplied pretreatment observation, without temporal averaging or scaling.
 2. Fit nested SCM within that pool, using each series' **pretreatment mean**
    as a predictor and all pretreatment outcomes for the outer fitting loss.
-   PySyncon supplies its original predictor scaling and optimizer defaults,
-   with the checked numerical recovery described in the backend guide.
+   The fit uses the original predictor scaling and optimizer settings, with
+   checked numerical recovery as described in the backend guide.
 3. Return weights in the original donor order, with zeros for excluded donors.
 
 `predictors` accepts the same named, `n_pre`-by-units matrices as ISC. The
-outcome is always included. `options` passes explicit settings to
-`pysyncon.Synth.fit`; `backend_` exposes the fitted object. A constant predictor
+outcome is always included. `options` passes optimizer settings to the
+second-stage fit, and `backend_` exposes the fitted object. A constant predictor
 mean across selected units makes upstream variance scaling undefined; the fit
 raises rather than silently changing the specified predictors. With one donor,
 the simplex fixes its weight at one and needs no optimizer.
