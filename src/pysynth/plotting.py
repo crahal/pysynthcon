@@ -526,7 +526,11 @@ def _layout_row_annotations(fig):
         offset = offsets.get(key, 12)
         artist.set_anncoords(("axes fraction", "offset points"))
         artist.set_position((fraction, -offset))
-        offsets[key] = offset + len(text.splitlines()) * artist.get_fontsize() * 1.2 + 6
+        # Keep the usual leading, but allow for the renderer’s actual
+        # multiline height (including ascent and descent) before the next label.
+        text_points = artist.get_window_extent(renderer).height / renderer.points_to_pixels(1)
+        nominal_step = len(text.splitlines()) * artist.get_fontsize() * 1.2 + 6
+        offsets[key] = offset + max(nominal_step, text_points + 3)
 
 
 def _direct_path_labels(ax, x, estimate, observed_label, counterfactual_label, color=BLUE):
@@ -612,11 +616,12 @@ def _register_fonts():
     from matplotlib import font_manager
 
     manager = font_manager.fontManager
+    original_count = len(manager.ttflist)
     for _, filename, _ in _FONT_FACES:
         manager.addfont(_FONT_DIR / filename)
-        # addfont appends. findfont breaks ties on the first matching face,
-        # so prefer the bundled TTF over system versions with the same name.
-        manager.ttflist.insert(0, manager.ttflist.pop())
+    # addfont may append multiple names per face. findfont breaks ties on
+    # the first match, so prefer all bundled entries over system duplicates.
+    manager.ttflist[:] = manager.ttflist[original_count:] + manager.ttflist[:original_count]
 
 
 def publication_title_font():
@@ -922,6 +927,7 @@ def _figure_grid(figsize, title, subtitle, note, benchmark=None, references=()):
         title,
         subtitle,
         note,
+        heading,
     )
     return fig, outer[-2]
 
@@ -1027,7 +1033,17 @@ def _layout_captions(fig):
         return
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
-    outer, title, subtitle, note, title_text, subtitle_text, note_text = layout
+    outer, title, subtitle, note, title_text, subtitle_text, note_text, heading_axes = layout
+    # GridSpec distributes the space left after axis labels, ticks and margins.
+    # A ratio unit consequently occupies fewer pixels than a whole figure inch.
+    ratios = outer.get_height_ratios()
+    grid_height = heading_axes.get_window_extent(renderer).height * sum(ratios) / ratios[0]
+    pixels_per_unit = grid_height / fig.get_figheight()
+
+    def text_height(artist):
+        nominal = len(artist.get_text().splitlines()) * artist.get_fontsize() / 72 * 1.4
+        return max(nominal, artist.get_window_extent(renderer).height / pixels_per_unit)
+
     heights = []
     for artist, text in zip((title, subtitle, note), (title_text, subtitle_text, note_text)):
         if artist is None:
@@ -1036,7 +1052,7 @@ def _layout_captions(fig):
         width = artist.axes.get_window_extent(renderer).width * 0.96
         wrapped = _wrap_measured(text, artist, renderer, width)
         artist.set_text(wrapped)
-        heights.append(len(wrapped.splitlines()) * artist.get_fontsize() / 72 * 1.4)
+        heights.append(text_height(artist))
     head = heights[0] + heights[1] + 0.12
     foot = heights[2] + 0.07 if note is not None else 0.02
     benchmark_layout = getattr(fig, "_pysynth_benchmark_layout", None)
@@ -1049,7 +1065,7 @@ def _layout_captions(fig):
             width = strip.get_window_extent(renderer).width * 0.95
             wrapped = _wrap_measured(original, artist, renderer, width)
             artist.set_text(wrapped)
-            text_heights.append(len(wrapped.splitlines()) * artist.get_fontsize() / 72 * 1.4)
+            text_heights.append(text_height(artist))
         benchmark_height = sum(text_heights) + 0.18
         offset = 0.055
         for artist, text_height in zip(artists, text_heights):
@@ -1062,8 +1078,8 @@ def _layout_captions(fig):
         for label, original, values, source, provenance in rows:
             label.set_text(_wrap_measured(original, label, renderer, width * 0.45))
             source.set_text(_wrap_measured(provenance, source, renderer, width * 0.96))
-            row_height = max(0.22, len(label.get_text().splitlines()) * 8 / 72 * 1.4)
-            source_height = len(source.get_text().splitlines()) * 7 / 72 * 1.4
+            row_height = max(0.22, text_height(label), *(text_height(value) for value in values))
+            source_height = text_height(source)
             row_heights.append((row_height, source_height))
         benchmark_height = 0.38 + sum(sum(heights) + 0.13 for heights in row_heights)
         heading.set_y(1 - 0.055 / benchmark_height)
@@ -1478,7 +1494,8 @@ def plot_comparison(
                     if reference_style == "direct"
                     else 0
                 )
-                + (0.75 if benchmark and reference_style == "strip" else 0)
+                # Either a source strip or a direct benchmark and its citation.
+                + (0.75 if benchmark else 0)
                 + (
                     0.4 + 0.85 * len(references) if references and reference_style == "strip" else 0
                 ),

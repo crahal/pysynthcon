@@ -10,6 +10,8 @@ versioning; the API may evolve during the 0.x research releases.
 - Set figure titles in STIX Two Text and labels, ticks and estimates in
   Source Sans 3. Bundle the fonts for consistent publication exports and
   use the same pairing in the desktop and mobile README headers.
+- Measure multiline captions and stacked published estimates with the active
+  renderer so their labels fit across Matplotlib versions.
 - Use the PySynthCon name in the README, citation, documentation and exported
   figure credits. The README header shows the California SDID estimate with
   separate layouts for desktop and mobile screens.
