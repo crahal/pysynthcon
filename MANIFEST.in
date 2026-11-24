@@ -4,6 +4,8 @@ recursive-include docs *.md *.rst *.py
 prune docs/_build
 include empirical_examples/basque.ipynb empirical_examples/california.ipynb
 include empirical_examples/germany.ipynb empirical_examples/kansas.ipynb
+include simulated_examples/donor_spillovers.ipynb
+prune outputs
 prune empirical_examples/figures
 prune empirical_examples/baselines
 include scripts/create_notebooks.py scripts/execute_notebooks.py
