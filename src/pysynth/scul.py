@@ -10,6 +10,39 @@ from .panel import Panel
 from .results import Estimate, make_estimate
 
 
+def _near_zero_variance(values):
+    """caret's default frequency/uniqueness rule for finite numeric columns.
+
+    SCUL's Preprocess and PreprocessSubset both call nearZeroVar, whose
+    defaults are freqCut=95/5 and uniqueCut=10. This is a discrete-frequency
+    rule, not a tolerance on the numeric variance.
+    """
+    rejected = []
+    for column in np.asarray(values).T:
+        _, counts = np.unique(column, return_counts=True)
+        if len(counts) == 1:
+            rejected.append(True)
+        else:
+            largest = np.sort(counts)[-2:]
+            rejected.append(largest[1] > 19 * largest[0] and 100 * len(counts) <= 10 * len(column))
+    return np.asarray(rejected, dtype=bool)
+
+
+def _reference_preprocessing(panel, training_ends):
+    """Apply the original full-series and every-training-window screens."""
+    rejected = _near_zero_variance(panel.y)
+    constant = np.all(panel.control == panel.control[0], axis=0)
+    for end in training_ends:
+        rejected |= _near_zero_variance(panel.y[:end])
+        constant |= np.all(panel.control[:end] == panel.control[0], axis=0)
+    if rejected[-1]:
+        raise ValueError(
+            "Original SCUL preprocessing rejects a constant or near-zero-variance target "
+            "in the full series or a training window"
+        )
+    return ~rejected[:-1], constant
+
+
 def _standardize(x, y):
     mean = x.mean(axis=0)
     scale = x.std(axis=0, ddof=0)
@@ -36,6 +69,9 @@ class SCUL:
     path. No approximate solver or shortened penalty path is substituted.
     ``initial_window`` and ``horizon`` default to the post-treatment length,
     matching the original setup function; specify them for short panels.
+    Original setup screens full series and every training window using
+    caret's near-zero-variance rule. Screening can depend on post-period
+    values; regression and penalty selection use only pretreatment outcomes.
 
     ``backend='python'`` explicitly selects the earlier sklearn adaptation.
     It is useful for dependency-free experiments but is not numerically
@@ -49,8 +85,8 @@ class SCUL:
 
     The Python adaptation uses a common grid for all three selection rules,
     defaults to half the pre-periods (at least three) for ``initial_window``,
-    and defaults to a one-period ``horizon``. At least two validation origins
-    are required for automatic selection with either backend.
+    and defaults to a one-period ``horizon``. Automatic selection needs at
+    least one validation origin; the fold-SD ``'1se'`` rule requires two.
     """
 
     alpha: float | None = None
@@ -92,8 +128,10 @@ class SCUL:
             if not isinstance(horizon, (int, np.integer)) or horizon < 1:
                 raise ValueError("horizon must be a positive integer")
             origins = list(range(initial, panel.n_pre - horizon + 1))
-            if len(origins) < 2:
-                raise ValueError("SCUL needs at least two rolling validation origins")
+            if not origins:
+                raise ValueError("SCUL needs at least one rolling validation origin")
+            if self.selection == "1se" and len(origins) < 2:
+                raise ValueError("SCUL's 1se rule needs at least two rolling validation origins")
             if self.alphas is None:
                 if not isinstance(self.n_alphas, (int, np.integer)) or self.n_alphas < 2:
                     raise ValueError("n_alphas must be an integer >= 2")
@@ -154,20 +192,22 @@ class SCUL:
         if not isinstance(horizon, (int, np.integer)) or horizon < 1:
             raise ValueError("horizon must be a positive integer")
         origins = list(range(initial, panel.n_pre - horizon + 1))
-        if self.alpha is None and len(origins) < 2:
+        if self.alpha is None and not origins:
             raise ValueError(
-                "SCUL needs at least two rolling validation origins. The original defaults "
+                "SCUL needs at least one rolling validation origin. The original defaults "
                 "use the post-period length for initial_window and horizon; specify an "
                 "appropriate shorter design explicitly when the pretreatment period is too short."
             )
-        # The original preprocessing removes donors constant in any training
-        # window. Expanding windows make checking the first sufficient.
-        train = panel.control[: initial if self.alpha is None else panel.n_pre]
-        keep = np.std(train, axis=0) > 0
+        if self.alpha is None and self.selection == "1se" and len(origins) < 2:
+            raise ValueError("SCUL's 1se rule needs at least two rolling validation origins")
+        # A rare-value frequency can cross caret's threshold in a later
+        # expanding window, so checking only the first window is insufficient.
+        training_ends = origins if self.alpha is None else [panel.n_pre]
+        keep, constant = _reference_preprocessing(panel, training_ends)
         if keep.sum() < 2:
-            raise ValueError("Original glmnet SCUL needs at least two nonconstant donor series")
-        if np.std(panel.treated[: initial if self.alpha is None else panel.n_pre]) == 0:
-            raise ValueError("Original glmnet SCUL requires a nonconstant training outcome")
+            raise ValueError(
+                "Original SCUL needs at least two donors after near-zero-variance screening"
+            )
         result = run_reference(
             "scul",
             {"outcomes": np.column_stack([panel.control[:, keep], panel.treated])},
@@ -198,7 +238,11 @@ class SCUL:
                 "initial_window": initial,
                 "horizon": horizon,
                 "origins": origins if self.alpha is None else [],
-                "removed_constant_donors": [panel.units[i] for i in np.flatnonzero(~keep)],
+                "preprocessing": "caret nearZeroVar: full series and every training window",
+                "removed_constant_donors": [panel.units[i] for i in np.flatnonzero(constant)],
+                "removed_near_zero_variance_donors": [
+                    panel.units[i] for i in np.flatnonzero(~keep)
+                ],
                 "lambda_options": result.get("lambda"),
             },
         )

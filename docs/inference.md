@@ -33,12 +33,18 @@ used for these two procedures.
 | `jackknife` | Leave each unit out; normalize the remaining fitted donor weights and keep time weights fixed. | At least two treated units and two donors with nonzero weight. |
 | `placebo` | Randomly permute the original controls, assigning the last `n_treated` as pseudo-treated; re-estimate both sets of weights. | More controls than treated units; supports one treated unit. |
 
-The fixed-weight jackknife is the published Algorithm 3 itself. Bootstrap and
+The fixed-weight jackknife follows the authors’ R implementation of
+Algorithm 3, with the centering convention described below. Bootstrap and
 placebo preserve the original fit's penalties and stopping settings and warm-start
 from its fitted weights. The original treated observations never enter a placebo
 resample. Reference bootstrap and placebo variance is the population variance of
 the resulting draw estimates; jackknife variance is `(n_units - 1)` times the
-population variance of its leave-one-unit-out estimates.
+population variance of its leave-one-unit-out estimates, centered on their
+mean. The paper’s Algorithm 3 and appendix equation (11.3) instead center on
+the original ATT. These need not coincide in finite samples: the literal-paper
+variance is the reference variance plus `(n_units - 1) * (mean(draws) - ATT)**2`.
+We retain R’s convention to reproduce its reported software results and label
+it explicitly; no claim of exact equality of those two formulas is made.
 
 As in the pinned R resampling implementation, resampled optimizations use the
 default sparsification step and 100 first-stage iterations even when the original
@@ -131,13 +137,17 @@ the reported rank is
 $$p=\frac{1+\#\{\text{placebo statistic}\geq\text{treated statistic}\}}{1+B}.$$
 
 Ties count in the tail. A zero pre-gap with a nonzero post-gap gives an
-infinite statistic; both gaps zero gives zero, using a numerical threshold
-of $10^{-12}$ in outcome units. Inspect the table when fit is effectively
+infinite statistic; both gaps exactly zero gives zero. No fixed cutoff in
+outcome units is used, so changing the measurement scale does not change
+the diagnostic. RMSPE is calculated with scaled residuals to avoid underflow
+or overflow when squaring. Inspect the table when fit is effectively
 perfect or when no placebo passes the cutoff (then the rank is one).
 
-An assignment-based interpretation needs exchangeability and a credible
-donor pool. The rank is not automatically a causal p-value in an observational
-study. The cutoff changes the reference set and should be chosen transparently.
+The actual treated fit has $N$ donors, whereas each placebo fit has $N-1$
+because the actual treated unit is excluded. Thus the fitting procedure is
+not symmetric across assignments: exchangeability alone does not make this
+rank an exact randomization p-value. Treat it as an in-space diagnostic and
+assess donor eligibility and the research design separately. The cutoff changes the reference set and should be chosen transparently.
 
 This generic placebo diagnostic is distinct from the SDID placebo variance
 estimator above. Conformal inference as a common API, time-block resampling and

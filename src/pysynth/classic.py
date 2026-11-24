@@ -1,6 +1,7 @@
 """Outcome-matching convex synthetic control."""
 
 from dataclasses import dataclass
+from numbers import Integral
 
 import numpy as np
 
@@ -26,7 +27,13 @@ class SyntheticControl:
         """Fit donor weights using only pre-treatment observations."""
         if not np.isfinite(self.ridge) or self.ridge < 0:
             raise ValueError("ridge must be finite and nonnegative")
-        if self.max_iter < 1 or not np.isfinite(self.tol) or self.tol <= 0:
+        if (
+            not isinstance(self.max_iter, Integral)
+            or isinstance(self.max_iter, bool)
+            or self.max_iter < 1
+            or not np.isfinite(self.tol)
+            or self.tol <= 0
+        ):
             raise ValueError("max_iter and tol must be positive")
         w, meta = simplex_fit(
             panel.control[: panel.n_pre],

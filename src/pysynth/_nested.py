@@ -115,9 +115,14 @@ class StableNestedOptimizer:
             cp.Minimize(v @ discrepancy + pen * (v @ pairwise @ w)),
             [w >= 0, cp.sum(w) == 1],
         )
-        # A scalar rescaling preserves the outer minimizer while avoiding
-        # outcome-unit-dependent finite difference and stopping tolerances.
-        loss_scale = max(float(np.var(y)), 1e-8) * len(y)
+        # Simplex weights permit subtracting the treated outcome from every
+        # donor. This prevents cancellation after large common level shifts.
+        # Keep the original variance scaling without an absolute outcome-unit
+        # floor. Use donor discrepancies only for a constant treated pre-path.
+        loss_scale = float(np.var(y)) * len(y)
+        z = z - y[:, None]
+        if loss_scale == 0:
+            loss_scale = float(np.max(np.abs(z))) ** 2 * len(y) or 1.0
         best = {"loss": np.inf}
         cache = {}
         evaluations = 0
@@ -163,7 +168,7 @@ class StableNestedOptimizer:
                 # The original convex QP remains solved and feasible. It can
                 # still be evaluated by a derivative-free outer optimizer.
                 cache["unavailable"] = str(exc)
-            residual = y - z @ weights
+            residual = -z @ weights
             loss = float(residual @ residual)
             cache.update(loss=loss, weights=weights.copy(), residual=residual)
             if loss < best["loss"]:

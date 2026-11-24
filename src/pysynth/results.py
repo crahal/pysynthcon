@@ -9,6 +9,17 @@ import pandas as pd
 from .panel import Panel
 
 
+def _root_mean_square(values) -> float:
+    """Compute RMS without squaring residuals in their original units."""
+    values = np.asarray(values, dtype=float)
+    if not values.size:
+        return float("nan")
+    scale = float(np.max(np.abs(values)))
+    if scale == 0:
+        return 0.0
+    return float(scale * np.sqrt(np.mean((values / scale) ** 2)))
+
+
 class Estimator(Protocol):
     """An estimator consumes a Panel and returns an Estimate."""
 
@@ -46,7 +57,7 @@ class Estimate:
     @property
     def pre_rmse(self) -> float:
         """Root mean squared pre-treatment discrepancy."""
-        return float(np.sqrt(np.mean(self.effects.iloc[: self.n_pre] ** 2)))
+        return _root_mean_square(self.effects.iloc[: self.n_pre])
 
     def to_frame(self) -> pd.DataFrame:
         """Export paths and the post-treatment indicator."""

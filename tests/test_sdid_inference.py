@@ -51,6 +51,19 @@ def test_reference_sc_and_did_are_the_r_estimators(reference, multi_panel):
     )
 
 
+def test_jackknife_retains_author_software_centering_convention(reference, multi_panel):
+    """Paper Algorithm 3's full-ATT center is not the R var(draws) center."""
+    result = SyntheticDID().inference(multi_panel, method="jackknife")
+    n = len(result.draws)
+    paper_variance = (n - 1) * np.mean((result.draws - result.estimate) ** 2)
+    centering_difference = (n - 1) * (result.draws.mean() - result.estimate) ** 2
+    assert result.metadata["variance_centering"] == "leave_one_out_mean"
+    assert result.variance == pytest.approx(reference["jackknife"]["variance"], abs=1e-10)
+    assert paper_variance - result.variance == pytest.approx(centering_difference, abs=1e-14)
+    # Nonuniform fitted weights make the finite-sample distinction observable.
+    assert centering_difference > 1e-3
+
+
 def test_seeded_placebo_draws_can_be_replayed(multi_panel):
     model = SyntheticDID()
     estimate = model.fit(multi_panel)
@@ -118,3 +131,25 @@ def test_single_treated_placebo_matches_independent_r(reference, multi_panel):
     np.testing.assert_allclose(result.draws, expected["draws"], rtol=0, atol=1e-10)
     assert result.estimate == pytest.approx(expected["att"], abs=1e-10)
     assert result.variance == pytest.approx(expected["variance"], abs=1e-10)
+
+
+def test_inference_rejects_reordered_time_weights(multi_panel):
+    from dataclasses import replace
+
+    estimate = SyntheticDID().fit(multi_panel)
+    reordered = replace(estimate, time_weights=estimate.time_weights.iloc[::-1])
+    with pytest.raises(ValueError, match="fit of this panel"):
+        SyntheticDID().inference(multi_panel, method="jackknife", estimate=reordered)
+
+
+@pytest.mark.parametrize("weight_type", ["weights", "time_weights"])
+@pytest.mark.parametrize("bad_value", [-0.1, np.nan, np.inf, 2])
+def test_inference_rejects_invalid_fitted_simplex(multi_panel, weight_type, bad_value):
+    from dataclasses import replace
+
+    estimate = SyntheticDID().fit(multi_panel)
+    changed = getattr(estimate, weight_type).copy()
+    changed.iloc[0] = bad_value
+    invalid = replace(estimate, **{weight_type: changed})
+    with pytest.raises(ValueError, match="finite simplex"):
+        SyntheticDID().inference(multi_panel, method="jackknife", estimate=invalid)

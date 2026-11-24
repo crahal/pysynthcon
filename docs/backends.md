@@ -27,16 +27,29 @@ predictors. Classical SCM estimates V with the full upstream nested
 optimization; it no longer injects a fixed V. PenalizedSynth uses the original
 method's identity metric unless the caller explicitly supplies another metric.
 AugSynth uses the
-no-covariate Ridge specification, with its upstream cross-validation.
+no-covariate Ridge specification, with its upstream cross-validation. The
+authors’ `augsynth` code omits the last possible holdout block; that convention
+and its one-standard-error selection are deliberately retained.
 RobustSynth requires explicit ridge and singular-value truncation choices;
-it uses all donor periods for its denoising step. Results preserve the
-upstream object's donor-weight prediction on the original outcome matrix.
+it uses all donor periods for its denoising step and predicts from the
+denoised matrix, following the paper’s Algorithm 1. Because `Panel` requires
+complete data, observed zeros count as observations: the observation fraction
+is one. Threshold selection checks every singular value. A least-squares
+form of the ridge solve avoids squaring the condition number and also handles
+zero-penalty rank-deficient designs. The exposed object records the denoised
+matrix, singular values and retained rank. This corrects the pinned upstream
+missingness/truncation behavior; unmodified upstream predictions can differ
+on affected inputs.
 
 Internally generated data use integer times so quarterly or date-labelled
 panels do not encounter upstream integer-calendar assumptions. Labels are
 restored on the returned result. For a custom Dataprep, unit labels, full
-outcome paths, and fitting periods must match the Panel. The user retains
-responsibility for pre-treatment predictor windows and a valid specification.
+outcome paths, and fitting periods must match the Panel exactly. Predictor
+windows must be observed and strictly pretreatment. The explicit
+`allow_post_predictors=True` exception is available for a documented historical
+specification; the used post-periods are recorded in metadata. Germany’s
+replication uses this exception for its published 1990 convention. The caller
+remains responsible for which covariates are substantively eligible.
 
 ```python
 # dp is a pysyncon.Dataprep with your predictor and special-predictor choices.
@@ -44,6 +57,16 @@ adapter = PySyncon("synth", dataprep=dp, options={"optim_method": "Nelder-Mead"}
 result = adapter.fit(panel)
 print(adapter.backend_.summary())
 ```
+
+Both nested optimization stages now check solver termination and simplex
+feasibility. If upstream SLSQP fails, CLARABEL solves the identical weighted
+quadratic, including the pairwise penalty where applicable. A default outer
+search that reaches its cap can recover with Powell on the same full nested
+objective; explicitly supplied outer optimization settings are respected and
+fail visibly. Every recovery and outer termination is recorded in metadata.
+Successful upstream solves are retained. This corrects previously unchecked
+failures, including failures found in the canonical California and Germany
+fits; it does not discard predictors or use fewer optimization steps.
 
 Custom backend fit options are passed through; unsupported options raise.
 Backend-specific uncertainty procedures are available on the exposed object

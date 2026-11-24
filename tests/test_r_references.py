@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from pysynth import SCUL, IndividualSC, Panel, TwoStageIndividualSC
-from pysynth._r import reference_directory, reference_library, require_rscript
+from pysynth._r import reference_directory, reference_library, require_rscript, run_reference
 
 FIXTURES = Path(__file__).with_name("fixtures")
 pytestmark = pytest.mark.r_reference
@@ -65,6 +65,31 @@ def test_scul_single_period_validation_preserves_matrix_shape():
     assert result.metadata["origins"] == list(range(8, 20))
 
 
+@pytest.mark.parametrize("selection", ["median", "min"])
+def test_scul_single_origin_uses_the_original_defined_selection_rule(selection):
+    original = json.loads((FIXTURES / "scul_r.json").read_text())
+    panel = Panel(original["y"], 6, 20)
+    # Upstream also computes an unused 1se candidate, warning that this
+    # candidate has no defined SD with one fold. Preserve that warning.
+    with pytest.warns(RuntimeWarning, match="no non-missing arguments"):
+        expected = run_reference(
+            "scul",
+            {"outcomes": panel.y},
+            {
+                "n_pre": 20,
+                "initial_window": 18,
+                "horizon": 2,
+                "selection": f"lambda.{selection}",
+                "alpha": None,
+            },
+        )
+    with pytest.warns(RuntimeWarning, match="no non-missing arguments"):
+        result = SCUL(initial_window=18, horizon=2, selection=selection).fit(panel)
+    assert result.metadata["origins"] == [18]
+    assert result.metadata["alpha"] == expected["alpha"]
+    np.testing.assert_allclose(result.counterfactual, expected["counterfactual"], atol=1e-12)
+
+
 def test_scul_original_defaults_and_no_post_treatment_leakage():
     old = json.loads((FIXTURES / "scul_r.json").read_text())
     panel = Panel(old["y"], 6, 22)
@@ -76,6 +101,26 @@ def test_scul_original_defaults_and_no_post_treatment_leakage():
     other = SCUL().fit(Panel(changed, 6, 22))
     np.testing.assert_array_equal(fit.weights, other.weights)
     assert other.att - fit.att == pytest.approx(500)
+
+
+def test_scul_near_constant_donor_matches_original_screened_design():
+    rng = np.random.default_rng(731)
+    donors = rng.normal(size=(40, 3))
+    rare = np.zeros(40)
+    rare[0] = 1
+    rare[25:] = np.arange(15)
+    target = donors @ [0.2, 0.5, 0.3] + rare
+    target[30:] += 2
+    model = SCUL(initial_window=10, horizon=5)
+    # Original caret flags the rare column at the 21-observation training
+    # window (frequency 20:1, 2/21 unique), despite passing the first window.
+    full = model.fit(Panel(np.column_stack([donors, rare, target]), 4, 30))
+    screened = model.fit(Panel(np.column_stack([donors, target]), 3, 30))
+    assert full.weights.iloc[3] == 0
+    np.testing.assert_allclose(full.weights.iloc[:3], screened.weights, atol=1e-12)
+    np.testing.assert_allclose(full.counterfactual, screened.counterfactual, atol=1e-12)
+    assert full.metadata["removed_near_zero_variance_donors"] == [3]
+    assert full.metadata["removed_constant_donors"] == []
 
 
 def test_isc_covariates_and_fifty_resamples_match_direct_mscmt():

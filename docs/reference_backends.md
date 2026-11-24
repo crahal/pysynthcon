@@ -79,7 +79,10 @@ scaling; it is not MSCMT's unweighted dependent-variable loss.
 - The local bundle's SCUL functions follow commit
   `121b588cf8e4eebcea68518b57a7c754040153bb`. glmnet 4.0-2 is the version in the
   authors' published tutorial. Its original solver tolerances, automatic
-  fold-specific paths, median rule and exact refit are retained.
+  fold-specific paths, median rule and exact refit are retained. Python also
+  reproduces the setup’s caret near-zero-variance screening over the full
+  series and every training window, including the original post-period
+  dependence of that screening. The numerical lasso/CV uses pre-period data.
 - Two validation matrix slices explicitly preserve dimensions
   for a one-period horizon. This fixes an R shape error; it does not change the
   objective, path, or selection rule.

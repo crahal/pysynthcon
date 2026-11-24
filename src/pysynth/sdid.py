@@ -185,14 +185,16 @@ class SyntheticDID:
         estimate: Estimate | None = None,
         resamples=None,
     ) -> "SDIDInference":
-        """Reference Algorithms 2–4 for the no-covariate SDID estimate.
+        """Author-software versions of Algorithms 2–4 for no-covariate SDID.
 
         Bootstrap samples all units with replacement and rejects samples missing
         either treatment group. Placebo randomly partitions the original controls
         into pseudo-controls and pseudo-treated units. Both fully re-estimate
         donor and time weights, retain original penalties and stopping settings,
         and warm-start as in R synthdid. Jackknife leaves each unit out and keeps
-        normalized fitted weights fixed, as prescribed by Algorithm 3.
+        normalized fitted weights fixed. Its variance centers on the mean of
+        leave-one-out estimates, matching R ``synthdid``; literal Algorithm 3
+        in the paper instead centers on the original full-sample estimate.
 
         ``resamples`` optionally supplies exactly ``replications`` zero-based
         index vectors, enabling draw-for-draw comparison with another runtime.
@@ -215,12 +217,14 @@ class SyntheticDID:
             raise ValueError("Jackknife uses deterministic leave-one-unit-out samples")
         fitted = self.fit(panel) if estimate is None else estimate
         if (
-            fitted.method != "SyntheticDID"
+            not isinstance(fitted, Estimate)
+            or fitted.method != "SyntheticDID"
             or fitted.n_pre != panel.n_pre
             or not fitted.observed.index.equals(panel.times)
             or not np.array_equal(fitted.observed.to_numpy(), panel.treated)
             or tuple(fitted.weights.index) != panel.units[: panel.n_control]
             or fitted.time_weights is None
+            or not fitted.time_weights.index.equals(panel.times[: panel.n_pre])
             or fitted.metadata.get("panel_digest") != hashlib.sha256(panel.y.tobytes()).hexdigest()
         ):
             raise ValueError("estimate must be an SDID fit of this panel")
@@ -229,6 +233,13 @@ class SyntheticDID:
             for key in ("noise", "zeta_omega", "zeta_lambda", "min_decrease", "max_iter")
         }
         omega, lam = fitted.weights.to_numpy(), fitted.time_weights.to_numpy()
+        if any(
+            not np.isfinite(weights).all()
+            or np.any(weights < 0)
+            or not np.isclose(weights.sum(), 1, rtol=0, atol=1e-10)
+            for weights in (omega, lam)
+        ):
+            raise ValueError("estimate must contain finite simplex donor and time weights")
         if method == "jackknife" and np.count_nonzero(omega) == 1:
             raise ValueError("Fixed-weight jackknife needs at least two nonzero donor weights")
         n = panel.y.shape[1]
@@ -312,7 +323,9 @@ class SyntheticDID:
             )
         values = np.asarray(values)
         # The R reference's sqrt((B-1)/B)*sd(draws) is the population SD.
-        # Algorithm 3 instead multiplies the population variance by n-1.
+        # R's fixed-weight jackknife multiplies that variance by n-1. This
+        # uses the deletion mean, unlike the full-estimate center printed in
+        # the paper's Algorithm 3 and appendix equation (11.3).
         variance = float(np.var(values) * (n - 1 if method == "jackknife" else 1))
         return SDIDInference(
             fitted.att,
@@ -322,6 +335,9 @@ class SyntheticDID:
             np.asarray(draws),
             {
                 "reference": "synthdid@70c1ce3eac58e28c30b67435ca377bb48baa9b8a",
+                "variance_centering": (
+                    "leave_one_out_mean" if method == "jackknife" else "resample_mean"
+                ),
                 "settings": settings,
                 "solver_diagnostics": convergence,
             },

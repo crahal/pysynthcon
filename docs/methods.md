@@ -15,7 +15,10 @@ $$T_0^{-1}\|y_{pre}-C_{pre}w\|_2^2 + r\|w\|_2^2,
 
 The default $r=0$ gives outcome-only SCM, with no intercept. Every pre-period
 has equal importance. The solver uses analytic gradients, a common numerical
-rescaling, and explicit convergence failures. `ridge` is not Abadie and
+rescaling, and explicit convergence failures. Result metadata includes the
+convex optimality-gap upper bound in original objective units and in scaled
+units. This diagnoses possible suboptimality; it is not a certificate for the
+separate nonconvex predictor-weight search. `ridge` is not Abadie and
 L'Hour's pairwise-distance penalty; use `PySyncon("pensynth")` for that method.
 For classical nested optimization over predictor importance, pass a
 `pysyncon.Dataprep` to the `PySyncon` adapter. Neither selecting predictors
@@ -37,10 +40,17 @@ response scaling. Weights can be negative and need not sum to one. PySynth's
 Expanding training windows advance by one period. Both `initial_window` and
 `horizon` default to the post-treatment length, as in the original setup
 function. Short panels require an explicit feasible design; the library never
-silently shortens the horizon. At least two validation origins must fit wholly
-within the pretreatment period. Constant donors are removed from all training
-folds using the original preprocessing rule, and retained as zero weights in
-the returned panel-aligned result.
+silently shortens the horizon. At least one validation origin must fit wholly
+within the pretreatment period; the sample-SD `1se` selector requires two.
+Original preprocessing applies caret’s near-zero-variance rule to the full
+series and every expanding training window. It excludes constant columns and
+rare-value columns with a dominant/second-most-common frequency ratio above
+19 and at most 10% distinct values. Removed donors retain zero weights in the
+returned result; a rejected target produces an error. This original screening
+can depend on post-period values, including the target’s, although regression
+and penalty selection use only pretreatment outcomes. This is an explicit
+source convention, not a claim that the complete preprocessing pipeline is
+independent of treated post-outcomes.
 
 | `selection` | Original R rule |
 |---|---|
@@ -163,7 +173,9 @@ match each donor's mean post-outcome using its pre-outcomes, also with an
 intercept. Both weights lie on their respective probability simplices.
 
 The noise estimate is the sample SD (denominator $m-1$) of all donor
-pre-treatment first differences. Default regularization is
+pre-treatment first differences, matching the authors’ R code. The paper’s
+equation (2.2) instead writes a population denominator; we preserve and disclose
+the reference implementation’s finite-sample convention. Default regularization is
 $\zeta_\omega=(N_{tr}T_{post})^{1/4}\widehat\sigma$ and
 $\zeta_\lambda=10^{-6}\widehat\sigma$. The quadratic objectives contain
 **squared** zeta values. An explicit `noise` permits degenerate tiny panels;
