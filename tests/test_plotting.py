@@ -418,8 +418,14 @@ def test_subset_and_percentage_references_never_become_full_period_att_markers()
     fit = example(pd.Index([2000, 2001, 2004, 2010]))
     subset = matched_reference(fit, window=(2010, 2010))
     percent = matched_reference(fit, statistic="mean_percent_effect", reference=30)
-    _, axes = plot_comparison({"Historical SCM": fit}, references=[subset, percent])
+    fig, axes = plot_comparison({"Historical SCM": fit}, references=[subset, percent])
     assert len(axes[0].collections) == len(axes[1].collections) == 1
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    panel_bottom = min(ax.get_tightbbox(renderer).y0 for ax in axes)
+    for text, _ in fig._pysynth_comparison_notes:
+        box = text.get_window_extent(renderer)
+        assert fig.bbox.y0 <= box.y0 < box.y1 < panel_bottom
     ax = plot_paths(fit, effects=True, references=[subset, percent])
     guides = [line for line in ax.lines if line.get_label().startswith("Published:")]
     assert len(guides) == 1
@@ -594,7 +600,146 @@ def test_invalid_reference_layout_is_rejected_before_creating_figure(function):
     assert plt.get_fignums() == before
 
 
-def test_dense_historical_annotations_keep_separate_rows_and_use_empty_facet_space():
+@pytest.fixture
+def basque_reference_fits():
+    from pysynth.replication import reference_comparisons
+
+    # Reproduce the notebook's eleven estimators and its two source windows
+    # using an in-memory series. All panels share the observed GDP trajectory.
+    years = pd.Index(range(1960, 1998), name="Year")
+    observed = pd.Series(np.linspace(5, 9, len(years)), index=years)
+    gap = np.where(years < 1970, 0.01, -0.6995627075801111)
+    historical = Estimate(
+        "Historical SCM", observed, observed - gap, pd.Series([1.0], index=["donor"]), n_pre=10
+    )
+    names = (
+        "Outcome SCM",
+        "Predictor SCM · 3 blocks",
+        "Ridge-augmented SCM",
+        "Penalized SCM · λ = 0.01",
+        "Robust SCM · rank 3",
+        "Differenced SCM",
+        "SCUL",
+        "ISC · full donor pool",
+        "2SISC · nearest 10",
+        "Synthetic DID",
+        "DID",
+    )
+    fits = {
+        name: replace(historical, counterfactual=observed - gap * (1 + i / 20))
+        for i, name in enumerate(names)
+    }
+    return fits, historical, reference_comparisons("basque", historical)
+
+
+def assert_basque_source_links(path, headline, numerical):
+    from xml.etree import ElementTree
+
+    # Check the exported callouts themselves retain the correct source
+    # links and windows after the renderer reflows the text for this size.
+    links = ElementTree.parse(path).findall(".//{http://www.w3.org/2000/svg}a")
+    for reference, label, window in (
+        (headline, "Fig. 1 headline", "1980–1997"),
+        (numerical, "R Synth", "1975–1997"),
+    ):
+        text = " ".join(
+            word
+            for link in links
+            if link.get("{http://www.w3.org/1999/xlink}href") == reference.source_url
+            for word in " ".join(link.itertext()).split()
+        )
+        assert label in text and window in text
+
+
+def test_basque_historical_effects_and_citations_stay_separate_in_export(
+    tmp_path, basque_reference_fits
+):
+    fits, historical, (headline, numerical) = basque_reference_fits
+    fig, axes = plot_effects(fits, references=[headline, numerical])
+    assert axes.ndim == 2 and axes.shape[1] == 3
+    visible = [ax for ax in axes.flat if ax.get_visible()]
+    names = [*fits, "Reference · Historical SCM"]
+    assert len(visible) == len(names)
+    for ax, name in zip(visible, names):
+        assert name in " ".join(ax.get_title(loc="left").split())
+    historical_ax = visible[-1]
+    curve = next(line for line in historical_ax.lines if line.get_label() == names[-1])
+    np.testing.assert_allclose(curve.get_ydata(), historical.effects)
+
+    notes = {a.get_url(): a for a in fig._pysynth_direct_annotations if a.get_url()}
+    descriptive = notes[headline.source_url]
+    numeric = notes[numerical.source_url]
+    for width in (7.2, 6.0):
+        fig.set_figwidth(width)
+        (path,) = save_figure(fig, tmp_path / f"basque-{width}.svg")
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        boxes = [
+            note.get_bbox_patch().get_window_extent(renderer) for note in (descriptive, numeric)
+        ]
+        assert not boxes[0].overlaps(boxes[1])
+        for note, box in zip((descriptive, numeric), boxes):
+            for bounds in (fig.bbox, note.axes.get_window_extent(renderer)):
+                assert bounds.contains(box.x0, box.y0) and bounds.contains(box.x1, box.y1)
+            assert all(not box.overlaps(ax.get_tightbbox(renderer)) for ax in visible)
+
+        assert descriptive.arrow_patch is None
+        assert numerical.window[0] <= numeric.xy[0] <= numerical.window[1]
+        assert numeric.xy[1] == numerical.reference
+        guide_point = historical_ax.transData.transform(numeric.xy)
+        leader = numeric.arrow_patch
+        leader_tip = leader.get_path().transformed(leader.get_transform()).vertices[-1]
+        assert np.linalg.norm(guide_point - leader_tip) <= renderer.points_to_pixels(4)
+
+        assert_basque_source_links(path, headline, numerical)
+
+
+def test_basque_dot_plot_preserves_row_spacing_and_linked_comparisons(
+    tmp_path, basque_reference_fits
+):
+    fits, historical, (headline, numerical) = basque_reference_fits
+    name = "Reference · Historical SCM"
+    plain, plain_axes = plot_comparison({**fits, name: historical})
+    margin = plain_axes[0].get_ylim()[0] - plain_axes[0].get_yticks()[-1]
+    plt.close(plain)
+    fig, axes = plot_comparison(fits, references=[headline, numerical])
+    labels = [" ".join(t.get_text().split()) for t in axes[0].get_yticklabels()]
+    assert labels[:-1] == list(fits)
+    assert name in labels[-1]
+    assert len(axes) == 2
+
+    for width in (7.2, 6.0):
+        fig.set_figwidth(width)
+        (path,) = save_figure(fig, tmp_path / f"dot-plot-{width}.svg")
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        row_centers = []
+        for ax in axes:
+            offsets = ax.collections[0].get_offsets()
+            assert len(offsets) == len(fits) + 1
+            row_centers.append(ax.transData.transform(offsets)[:, 1])
+            steps = np.diff(row_centers[-1])
+            np.testing.assert_allclose(steps, steps[0])
+            assert ax.get_ylim()[0] - offsets[-1, 1] == pytest.approx(margin)
+        np.testing.assert_allclose(*row_centers, atol=0.5)
+        assert all(key in labels[-1] for key in ("1", "2"))
+
+        notes = {artist.get_url(): artist for artist, _ in fig._pysynth_comparison_notes}
+        notes = [notes[ref.source_url] for ref in (headline, numerical)]
+        assert "% of observed GDP" in " ".join(notes[0].get_text().split())
+        boxes = [artist.get_window_extent(renderer) for artist in notes]
+        assert not boxes[0].overlaps(boxes[1])
+        caption_boxes = [
+            t.get_window_extent(renderer) for t in notes[0].axes.texts if t not in notes
+        ]
+        for box in boxes:
+            assert fig.bbox.contains(box.x0, box.y0) and fig.bbox.contains(box.x1, box.y1)
+            assert all(not box.overlaps(ax.get_tightbbox(renderer)) for ax in axes)
+            assert all(not box.overlaps(caption) for caption in caption_boxes)
+        assert_basque_source_links(path, headline, numerical)
+
+
+def test_dense_historical_annotations_use_empty_facet_space_and_keep_both_source_windows():
     fit = example(pd.Index([2000, 2001, 2004, 2010]))
     historical = replace(fit, counterfactual=fit.observed - [0, 0, -4, -8])
     refs = [
@@ -611,28 +756,28 @@ def test_dense_historical_annotations_keep_separate_rows_and_use_empty_facet_spa
     ]
     fits = {f"Model {i}": fit for i in range(12)}
     fig, axes = plot_effects(fits, references=refs)
-    assert axes[-1, 0].get_position().width > 2.5 * axes[0, 0].get_position().width
+    historical_panel = axes[-1, 0].get_position()
+    source_gutter = fig._pysynth_direct_annotations[-1].axes.get_position()
+    assert historical_panel.width > axes[0, 0].get_position().width
+    assert source_gutter.x1 - historical_panel.x0 > 2.5 * axes[0, 0].get_position().width
     assert not axes[-1, 1].get_visible() and not axes[-1, 2].get_visible()
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
-    # Short facets must allow empty lower corners despite font descent and
-    # callout padding; every source box should stay within its own panel.
+    # Leave the outer padding as well as the text inside its source gutter.
     for artist in fig._pysynth_direct_annotations[-2:]:
         box = artist.get_bbox_patch().get_window_extent(renderer)
         bounds = artist.axes.get_window_extent(renderer)
         assert bounds.x0 <= box.x0 < box.x1 <= bounds.x1
         assert bounds.y0 <= box.y0 < box.y1 <= bounds.y1
-    fig, axes = plot_comparison(fits, references=refs)
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    annotations = [artist for artist, _ in fig._pysynth_row_annotations]
-    first, second = [artist.get_window_extent(renderer) for artist in annotations]
-    assert second.y1 < first.y0
-    bounds = axes[0].get_window_extent(renderer)
-    for box in (first, second):
-        assert bounds.x0 <= box.x0 < box.x1 <= bounds.x1
-        assert bounds.y0 <= box.y0 < box.y1 <= bounds.y1
-    assert "% of observed GDP" in annotations[0].get_text()
+    # Distinct checks in the same source may share a numbered citation and URL.
+    fig, _ = plot_comparison(fits, references=refs)
+    text = " ".join(
+        artist.get_text()
+        for artist, _ in fig._pysynth_comparison_notes
+        if artist.get_url() == refs[0].source_url
+    )
+    for detail in ("2004–2010", "2010–2010", "% of observed GDP"):
+        assert detail in " ".join(text.split())
 
 
 def test_unpaired_benchmark_leaders_identify_the_source_guide():

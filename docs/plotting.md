@@ -203,10 +203,18 @@ point differences with `≈`. Differences from rounded or approximate
 headlines are descriptive, not optimization errors or replication tolerances.
 
 A hollow ochre diamond identifies a compatible source mean on the matching
-estimator's ATT row. Its source value and difference sit beneath that row;
-the reproduced estimate beside the marker uses the reference's `precision`.
+estimator's ATT row. A single comparison sits beside the estimate. For
+several comparisons, numbered keys follow the estimator name and the linked
+citation lines below the axes give each source value, reproduction and
+window. Both plots keep their ordinary row spacing. The full-period ATT
+stays distinct from a percentage headline or a check over a shorter window.
 An ochre dotted segment identifies the source mean on its matching effect
 panel, with a callout showing the paired values and evaluation window.
+When a fit has several reference comparisons, its effect panel gets a
+dedicated row. The labels sit beside the trajectory, leaving the full
+effect path and the reference windows visible. The Basque example uses this
+layout to show the paper's percentage headline and the R Synth check in
+GDP units on the same historical fit.
 Outcome paths carry textual callouts, and RMSE never receives an ATT guide.
 
 Matching uses the exact `Estimate` object, not similar labels or numerical

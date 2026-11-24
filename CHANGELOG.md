@@ -18,6 +18,12 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Documentation and figures
 
+- Give effect panels with multiple source comparisons a dedicated row and
+  place their labels beside the curve. The Basque historical SCM panel now
+  shows the entire trajectory alongside the paper and R Synth comparisons.
+- Keep the ATT and pretreatment RMSE dots on evenly spaced rows when a fit
+  has several reference comparisons. Numbered keys beside the estimator
+  lead to the values and evaluation windows in the figure’s citation lines.
 - Set figure titles in STIX Two Text and labels, ticks and estimates in
   Source Sans 3. Bundle the fonts for consistent publication exports and
   use the same pairing in the desktop and mobile README headers.
