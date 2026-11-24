@@ -8,7 +8,9 @@ import pytest
 from pysynth import Estimate, reference_comparison_table
 from pysynth.datasets import DATASETS, load_dataset
 from pysynth.replication import (
+    LITERATURE_BENCHMARKS,
     _basque_schooling_shares,
+    california_tobacco_estimator,
     check_replication,
     reference_comparisons,
     replicate,
@@ -16,7 +18,7 @@ from pysynth.replication import (
 
 
 @pytest.mark.network
-@pytest.mark.parametrize("name", list(DATASETS))
+@pytest.mark.parametrize("name", list(LITERATURE_BENCHMARKS))
 def test_academic_reference_specification(name, tmp_path):
     if name != "california":
         pytest.importorskip("pysyncon")
@@ -143,3 +145,21 @@ def test_correct_mean_does_not_mask_wrong_kansas_quarterly_effects():
     fit = reference_fit(pd.Index(np.arange(1990, 2016.25, 0.25)), 89, -0.0401)
     with pytest.raises(AssertionError, match="Kansas post-treatment effects"):
         check_replication("kansas", fit)
+
+
+@pytest.mark.network
+def test_california_tobacco_uses_paper_table_one_predictors():
+    pytest.importorskip("pysyncon")
+    tobacco = load_dataset("california_tobacco")
+    panel = DATASETS["california_tobacco"].panel(tobacco)
+    assert panel.n_control == 38 and panel.units[-1] == "California"
+    builder = california_tobacco_estimator(tobacco, panel)
+    x0, x1 = builder.dataprep.make_covariate_mats()
+    assert x0.shape == (7, 38)
+    assert set(x0.columns) == set(panel.units[:-1])
+    # The Stata file stores the population share as a fraction. Table 1 prints percent.
+    x1.loc["age15to24"] *= 100
+    # The companion data give 17.35% for the stated years. Table 1 prints 17.40%.
+    np.testing.assert_array_equal(x1.round(2), [10.08, 89.42, 17.35, 24.28, 90.10, 120.20, 127.10])
+    with pytest.raises(ValueError, match="Unknown replication"):
+        replicate("california_tobacco", tobacco)

@@ -253,6 +253,49 @@ def _basque_schooling_shares(frame):
     return prepared
 
 
+def california_tobacco_estimator(frame, panel, *, backend="python"):
+    """Build the ADH (2010) predictor design for one actual or placebo assignment.
+
+    Use the study's separate covariate dataset, ``california_tobacco``.
+    Each assignment re-estimates predictor importance and donor weights.
+    The predictor periods follow Table 1. Beer observations begin in 1984.
+    Predictor rows and state columns follow the authors’ MATLAB smoking example.
+    With ``backend="r-synth"``, fit the original local R Synth package via the
+    optional rpy2 bridge. The default uses the checked Python predictor optimizer.
+    """
+    if (
+        panel.n_treated != 1
+        or panel.n_pre != 19
+        or not np.array_equal(panel.times, np.arange(1970, 2001))
+    ):
+        raise ValueError(
+            "The tobacco study requires one assigned state and 1970–2000 with 1989 onset"
+        )
+    if backend not in ("python", "r-synth"):
+        raise ValueError("backend must be 'python' or 'r-synth'")
+    dp = _require("pysyncon").Dataprep(
+        foo=frame,
+        dependent="cigsale",
+        unit_variable="state",
+        time_variable="year",
+        treatment_identifier=panel.units[-1],
+        controls_identifier=sorted(panel.units[:-1]),
+        predictors=["lnincome", "retprice", "age15to24"],
+        predictors_op="mean",
+        time_predictors_prior=range(1980, 1989),
+        time_optimize_ssr=range(1970, 1989),
+        special_predictors=[
+            ("beer", range(1984, 1989), "mean"),
+            *(("cigsale", [year], "mean") for year in (1988, 1980, 1975)),
+        ],
+    )
+    if backend == "r-synth":
+        from ._r_synth import ReferenceSynthDataprep
+
+        return ReferenceSynthDataprep(dp)
+    return PredictorSyntheticControl(dataprep=dp)
+
+
 def replicate(name, frame):
     """Fit a documented academic example and return its common Estimate.
 
@@ -261,7 +304,7 @@ def replicate(name, frame):
     augsynth vignette's no-covariate specification. See docs/replication.md
     for exact targets, windows, tolerances and limits on replication claims.
     """
-    if name not in DATASETS:
+    if name not in LITERATURE_BENCHMARKS:
         raise ValueError(f"Unknown replication: {name}")
     panel = DATASETS[name].panel(frame)
     if name == "california":

@@ -350,6 +350,36 @@ def _window_positions(panel, windows):
     return positions
 
 
+def _validate_dataprep(panel, dp, *, allow_post_predictors=False):
+    """Check a labelled design against its panel and return donor alignment and post dates."""
+    if (
+        dp.treatment_identifier != panel.units[-1]
+        or set(dp.controls_identifier) != set(panel.units[:-1])
+        or len(dp.controls_identifier) != panel.n_control
+    ):
+        raise ValueError("Dataprep units must match the Panel")
+    if list(dp.time_optimize_ssr) != list(panel.times[: panel.n_pre]):
+        raise ValueError("Dataprep fitting periods must equal Panel pre-periods")
+    predictor_periods = set(dp.time_predictors_prior) if dp.predictors else set()
+    for _, periods, _ in dp.special_predictors or []:
+        predictor_periods.update(periods)
+    if not predictor_periods <= set(panel.times):
+        raise ValueError("Dataprep predictor periods must be observed in the Panel")
+    post_predictor_periods = [t for t in panel.times[panel.n_pre :] if t in predictor_periods]
+    if post_predictor_periods and not allow_post_predictors:
+        raise ValueError(
+            "Dataprep predictors use post-treatment periods; historical replication "
+            "requires explicit allow_post_predictors=True"
+        )
+    z0, z1 = dp.make_outcome_mats(time_period=list(panel.times))
+    if not np.array_equal(z0.loc[:, list(panel.units[:-1])], panel.control) or not np.array_equal(
+        z1, panel.treated
+    ):
+        raise ValueError("Dataprep outcomes must match the Panel")
+    order = np.array([list(dp.controls_identifier).index(u) for u in panel.units[:-1]])
+    return order, post_predictor_periods
+
+
 class _PredictorBackend:
     def _fit(
         self,
@@ -420,33 +450,9 @@ class _PredictorBackend:
             order = np.arange(panel.n_control)
         else:
             dp = dataprep
-            if (
-                dp.treatment_identifier != panel.units[-1]
-                or set(dp.controls_identifier) != set(panel.units[:-1])
-                or len(dp.controls_identifier) != panel.n_control
-            ):
-                raise ValueError("Dataprep units must match the Panel")
-            if list(dp.time_optimize_ssr) != list(panel.times[: panel.n_pre]):
-                raise ValueError("Dataprep fitting periods must equal Panel pre-periods")
-            predictor_periods = set(dp.time_predictors_prior) if dp.predictors else set()
-            for _, periods, _ in dp.special_predictors or []:
-                predictor_periods.update(periods)
-            if not predictor_periods <= set(panel.times):
-                raise ValueError("Dataprep predictor periods must be observed in the Panel")
-            post_predictor_periods = [
-                t for t in panel.times[panel.n_pre :] if t in predictor_periods
-            ]
-            if post_predictor_periods and not allow_post_predictors:
-                raise ValueError(
-                    "Dataprep predictors use post-treatment periods; historical replication "
-                    "requires explicit allow_post_predictors=True"
-                )
-            z0, z1 = dp.make_outcome_mats(time_period=list(panel.times))
-            if not np.array_equal(
-                z0.loc[:, list(panel.units[:-1])], panel.control
-            ) or not np.array_equal(z1, panel.treated):
-                raise ValueError("Dataprep outcomes must match the Panel")
-            order = np.array([list(dp.controls_identifier).index(u) for u in panel.units[:-1]])
+            order, post_predictor_periods = _validate_dataprep(
+                panel, dp, allow_post_predictors=allow_post_predictors
+            )
         if options.get("custom_V") is not None:
             predictor_count = len(dp.predictors) + len(dp.special_predictors or [])
             if len(metric) != predictor_count:
