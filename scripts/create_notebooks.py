@@ -1,6 +1,7 @@
 """Regenerate the four reviewable notebook sources (execution is separate)."""
 
 from pathlib import Path
+from textwrap import dedent
 
 import nbformat as nbf
 
@@ -27,49 +28,289 @@ EXAMPLES = {
     ),
 }
 
+FIGURE_DETAILS = {
+    "california": {
+        "case": "California Proposition 99",
+        "outcome": "Cigarette sales (packs per capita)",
+        "effect": "Effect on cigarette sales (packs per capita)",
+        "units": "packs per capita",
+        "periods": "1970–1988 pretreatment · 1989–2000 post-treatment · 38 donors",
+        "onset": "1989",
+        "reference": "SDID counterfactual",
+        "reference_note": "Reference: Arkhangelsky et al. (2021), no-covariate SDID. Dashed vertical line: first affected year, 1989. Shading marks the post-treatment period.",
+    },
+    "basque": {
+        "case": "The Basque Country",
+        "outcome": "GDP per capita (thousands of 1986 US dollars)",
+        "effect": "Effect on GDP per capita (thousands of 1986 US dollars)",
+        "units": "thousand 1986 US$",
+        "periods": "1960–1969 pretreatment · 1970–1997 post-treatment · 17 donors",
+        "onset": "1970",
+        "reference": "Historical SCM counterfactual",
+        "reference_note": "Reference: Abadie & Gardeazabal (2003), historical predictor specification. The benchmark ATT uses 1975–1997; comparison figures use 1970–1997. Shading starts in 1970.",
+    },
+    "germany": {
+        "case": "German reunification",
+        "outcome": "GDP per capita (US dollars, source units)",
+        "effect": "Effect on GDP per capita (US dollars, source units)",
+        "units": "US$ per capita",
+        "periods": "1960–1989 pretreatment · 1990–2003 post-treatment · 16 donors",
+        "onset": "1990",
+        "reference": "Historical SCM counterfactual",
+        "reference_note": "Reference: Abadie, Diamond & Hainmueller (2015). The historical specification includes 1990 in predictor training. Comparison estimators use only periods before 1990.",
+    },
+    "kansas": {
+        "case": "The Kansas income-tax cuts",
+        "outcome": "Log GDP per capita",
+        "effect": "Effect on log GDP per capita (log points)",
+        "units": "log points",
+        "periods": "1990 Q1–2012 Q1 pretreatment · 2012 Q2–2016 Q1 post-treatment · 49 donors",
+        "onset": "2012 Q2",
+        "reference": "Ridge ASCM counterfactual",
+        "reference_note": "Reference: Ben-Michael, Feller & Rothstein (2021), no-covariate Ridge ASCM vignette. Shading starts at 2012.25, as in the source. Effects are log differences, not percentage changes.",
+    },
+}
+
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def code(source):
+    return nbf.v4.new_code_cell(dedent(source).strip())
+
+
+def markdown(source):
+    return nbf.v4.new_markdown_cell(dedent(source).strip())
 
 
 def build(name, title, description, reference):
     cells = [
-        nbf.v4.new_markdown_cell(
-            f"# {title}\n\n{description}\n\n{reference}\n\nRun from a checkout installed using `requirements-replication.txt` and `pip install -e .`. This notebook downloads immutable public data using **requests**; an internet connection is required. See [the replication guide](../docs/replication.md) for provenance and scope."
+        markdown(
+            f"# {title}\n\n{description}\n\n{reference}\n\n"
+            "Run from a checkout installed using `requirements-replication.txt` and "
+            "`pip install -e .`. The notebook downloads immutable public data with "
+            "**requests**, checks the reference specification, and exports three "
+            "publication figures as PDF, SVG and 300 dpi PNG. "
+            "See [the replication guide](../docs/replication.md) and "
+            "[the figure guide](../docs/plotting.md)."
         ),
-        nbf.v4.new_code_cell(
-            "%matplotlib inline\nimport hashlib\nfrom io import BytesIO\nfrom importlib.metadata import version\n\nimport numpy as np\nimport pandas as pd\nimport requests\nimport matplotlib.pyplot as plt\n\nfrom pysynth import (SyntheticControl, SCUL, IndividualSC, TwoStageIndividualSC, SyntheticDID,\n                     DifferenceInDifferences, PySyncon, SCM, compare)\nfrom pysynth.datasets import DATASETS\nfrom pysynth.replication import replicate, check_replication\n\npd.Series({p: version(p) for p in ['pysynth-control', 'numpy', 'scipy', 'pandas', 'pysyncon', 'SyntheticControlMethods']}, name='version')"
-        ),
-        nbf.v4.new_markdown_cell(
-            "## Download and verify the academic data\n\nThe URL names an immutable upstream commit. SHA256 verification fails visibly if the bytes differ. No manual download or bundled dataset is required."
-        ),
-        nbf.v4.new_code_cell(
-            f"name = {name!r}\nspec = DATASETS[name]\nresponse = requests.get(spec.url, timeout=30)\nresponse.raise_for_status()\nassert hashlib.sha256(response.content).hexdigest() == spec.sha256\ndata = pd.read_csv(BytesIO(response.content), sep=spec.separator)\npanel = spec.panel(data)\nprint(spec.citation)\nprint(spec.url)\nprint(f'{{panel.n_control}} donors; {{panel.n_pre}} pre-periods; {{panel.n_post}} post-periods')\ndata.head()"
-        ),
-        nbf.v4.new_markdown_cell(
-            "## Reference specification and numerical check\n\nThis cell uses the historical specification described above. Its assertion is separate from the new-method comparison. See `pysynth.replication.replicate` for the full predictor windows and optimization settings."
-        ),
-        nbf.v4.new_code_cell(
-            "reference = replicate(name, data)\nreport = check_replication(name, reference)\ndisplay(pd.Series(report, name='Replication check'))\nreference.plot()\nplt.show()"
-        ),
-        nbf.v4.new_markdown_cell(
-            "## Compare all applicable methods\n\nAll rows use the same outcome panel, donor eligibility and intervention date. Native SCM assigns equal importance to outcome periods; the pysyncon SCM adapter standardizes predictor rows. Penalized and robust SCM use explicit illustrative tuning values below. The SyntheticControlMethods rows use at most ten evenly spaced pre-outcome lag predictors plus its outcome mean; this keeps the nested optimization practical for quarterly panels. SCUL selects its penalty by rolling validation entirely within the pre-period, using a shared pretreatment penalty grid.\n\nVanilla Individual Synthetic Control (ISC) fits over the full eligible donor pool. Two-Stage Individual Synthetic Control (2SISC) first selects up to ten nearest donors by pretreatment Euclidean distance, then fits convex weights within that group. Both are shown separately. With one aggregate treated case, default outcome features and no resampling, vanilla ISC coincides with Outcome SCM; that agreement is expected. These applications do not reproduce the Vagni–Breen survey study. SDID uses donor post-period outcomes to learn time weights, and robust SCM denoises donors over the full panel; neither uses treated post outcomes to estimate weights. The newer methods' rows are **new applications**, not estimates published in their development papers.\n\nUpstream convergence warnings remain visible. No method is silently dropped if fitting fails."
-        ),
-        nbf.v4.new_code_cell(
-            "models = {\n    'Outcome SCM': SyntheticControl(),\n    'SCUL': SCUL(initial_window=max(3, panel.n_pre // 2), horizon=1),\n    'ISC (full donor pool)': IndividualSC(),\n    '2SISC (nearest 10)': TwoStageIndividualSC(n_neighbors=10),\n    'Synthetic DID': SyntheticDID(),\n    'DID': DifferenceInDifferences(),\n    'pysyncon SCM': PySyncon('synth'),\n    'Augmented SCM': PySyncon('augsynth'),\n    'Penalized SCM (0.01)': PySyncon('pensynth', options={'lambda_': 0.01}),\n    'Robust SCM (rank 3, ridge 0.1)': PySyncon('robust', options={'lambda_': 0.1, 'sv_count': 3}),\n    'SyntheticControlMethods SCM': SCM('synth', n_lags=10),\n    'Differenced SCM': SCM('diffsynth', n_lags=10),\n}\nresults = {label: model.fit(panel) for label, model in models.items()}\ncomparison = compare(results)\ncomparison.round(4)"
-        ),
-        nbf.v4.new_markdown_cell(
-            "## Estimated effect paths\n\nDifferences across estimates reflect different restrictions, extrapolation, regularization and level adjustments. Pre-period RMSE measures fit; it does not validate the identifying assumptions or rank causal credibility."
-        ),
-        nbf.v4.new_code_cell(
-            "fig, axes = plt.subplots(4, 3, figsize=(15, 13), sharex=True)\nfor ax, (label, result) in zip(axes.flat, results.items()):\n    result.plot(ax=ax, effects=True)\n    ax.set_title(label, fontsize=10)\n    ax.get_legend().remove()\nfor ax in list(axes.flat)[len(results):]:\n    ax.set_visible(False)\nfig.tight_layout()\nplt.show()"
-        ),
-        nbf.v4.new_code_cell(
-            "weights = pd.concat({label: fit.weights for label, fit in results.items()}, axis=1)\nweights.loc[weights.abs().max(axis=1).sort_values(ascending=False).index].head(15).round(4)"
-        ),
-        nbf.v4.new_markdown_cell(
-            "## Interpretation and reproducibility\n\nThe ATT is the average observed-minus-counterfactual gap in the post-period, in the stated outcome units. Negative effects mean an outcome below its estimated untreated path. No automatic confidence interval is reported: serial dependence, donor eligibility, spillovers and assignment assumptions need a defensible inferential design.\n\n`pysynth.placebo_test` offers in-space RMSPE-ratio diagnostics and a rank p-value under exchangeability assumptions. It is not the synthdid package's placebo variance estimator. SCUL's original scanner-data empirical study and the costofcare/ISC survey study are not reproduced here: their original data and full research designs differ from these public canonical panels.\n\nThe downloaded bytes and software versions are recorded above. Re-run the notebook from a fresh kernel to reproduce both the reference check and the comparison."
-        ),
+        code("""
+            %matplotlib inline
+            import hashlib
+            import os
+            from io import BytesIO
+            from pathlib import Path
+            from importlib.metadata import version
+
+            import numpy as np
+            import pandas as pd
+            import requests
+            import matplotlib.pyplot as plt
+            from IPython.display import Markdown, display
+
+            from pysynth import (
+                SyntheticControl, SCUL, IndividualSC, TwoStageIndividualSC,
+                SyntheticDID, DifferenceInDifferences, PySyncon, SCM, compare,
+                plot_paths, plot_effects, plot_comparison, save_figure,
+            )
+            from pysynth.datasets import DATASETS
+            from pysynth.replication import replicate, check_replication
+
+            pd.Series({p: version(p) for p in [
+                'pysynth-control', 'numpy', 'scipy', 'pandas', 'matplotlib',
+                'pysyncon', 'SyntheticControlMethods',
+            ]}, name='version')
+        """),
+        markdown("""
+            ## Download and verify the academic data
+
+            The URL names an immutable upstream commit. SHA256 verification fails
+            visibly if the bytes differ. No manual download or bundled data is required.
+        """),
+        code(f"""
+            name = {name!r}
+            spec = DATASETS[name]
+            response = requests.get(spec.url, timeout=30)
+            response.raise_for_status()
+            assert hashlib.sha256(response.content).hexdigest() == spec.sha256
+            data = pd.read_csv(BytesIO(response.content), sep=spec.separator)
+            panel = spec.panel(data)
+            print(spec.citation)
+            print(spec.url)
+            print(f'{{panel.n_control}} donors; {{panel.n_pre}} pre-periods; {{panel.n_post}} post-periods')
+            data.head()
+        """),
+        markdown("""
+            ## Reference specification and numerical check
+
+            This uses the historical specification above. Its numerical assertion is
+            separate from the new-method comparison. The path figure identifies the
+            reference estimator explicitly. See `pysynth.replication.replicate` for
+            predictor windows and optimization settings.
+        """),
+        code(f"""
+            figure_details = {FIGURE_DETAILS[name]!r}
+            # Works when the kernel starts in either the repository or notebook folder.
+            example_dir = Path.cwd() if Path.cwd().name == 'empirical_examples' else Path.cwd() / 'empirical_examples'
+            figure_dir = Path(os.environ.get('PYSYNTH_FIGURE_DIR', example_dir / 'figures')) / name
+
+            def export_figure(fig, kind):
+                paths = save_figure(fig, figure_dir / f'{{name}}-{{kind}}')
+                links = ' · '.join(
+                    f'[{{p.suffix[1:].upper()}}](figures/{{name}}/{{p.name}})' for p in paths
+                )
+                display(Markdown('**Download figure:** ' + links))
+                return paths
+
+            reference = replicate(name, data)
+            report = check_replication(name, reference)
+            display(pd.Series(report, name='Replication check'))
+            ax = plot_paths(
+                reference,
+                title=figure_details['case'],
+                subtitle='Observed outcome and reference counterfactual',
+                ylabel=figure_details['outcome'], xlabel='Year',
+                observed_label='Observed',
+                counterfactual_label=figure_details['reference'],
+                intervention_label=figure_details['onset'],
+                note=figure_details['reference_note'],
+            )
+            reference_files = export_figure(ax.figure, 'reference')
+            plt.show()
+        """),
+        markdown("""
+            ## Fit all applicable methods on a common sample
+
+            Every comparison uses the same outcome panel, eligible donors and treatment
+            date. The native SCM assigns equal importance to pre-outcome periods;
+            the pysyncon SCM comparison fixes predictor importance after row scaling.
+            The SyntheticControlMethods adapter uses one initialization and at most
+            ten evenly spaced outcome-lag predictors plus the outcome mean. Penalized
+            and robust SCM use the illustrative tuning values shown below. SCUL selects
+            its penalty by rolling validation within the pretreatment period.
+
+            **ISC and 2SISC here use a fixed matching metric, without MSCMT's outer
+            predictor-weight optimization or donor resampling.** Vanilla ISC uses the
+            full eligible pool; 2SISC first selects up to ten nearest donors by
+            pretreatment Euclidean distance. For a single treated case, vanilla ISC
+            therefore coincides with native outcome SCM. This is not a reproduction
+            of the full Vagni–Breen or costofcare survey workflow.
+
+            SDID uses donor post-period outcomes to estimate time weights; robust SCM
+            denoises donors across the panel. Neither fits weights to treated
+            post-treatment outcomes. The newer-method rows are new applications,
+            not estimates published in their development papers. Warnings remain
+            visible and no failed method is silently omitted.
+        """),
+        code("""
+            models = {
+                'Outcome SCM': SyntheticControl(),
+                'SCUL': SCUL(initial_window=max(3, panel.n_pre // 2), horizon=1),
+                'ISC (full donor pool)': IndividualSC(),
+                '2SISC (nearest 10)': TwoStageIndividualSC(n_neighbors=10),
+                'Synthetic DID': SyntheticDID(),
+                'DID': DifferenceInDifferences(),
+                'pysyncon SCM': PySyncon('synth'),
+                'Augmented SCM': PySyncon('augsynth'),
+                'Penalized SCM (0.01)': PySyncon('pensynth', options={'lambda_': 0.01}),
+                'Robust SCM (rank 3, ridge 0.1)': PySyncon('robust', options={'lambda_': 0.1, 'sv_count': 3}),
+                'SyntheticControlMethods SCM': SCM('synth', n_lags=10),
+                'Differenced SCM': SCM('diffsynth', n_lags=10),
+            }
+            results = {label: model.fit(panel) for label, model in models.items()}
+            comparison = compare(results)
+            display_labels = {
+                'ISC (full donor pool)': 'ISC · full donor pool',
+                '2SISC (nearest 10)': '2SISC · nearest 10',
+                'pysyncon SCM': 'SCM · pysyncon',
+                'Penalized SCM (0.01)': 'Penalized SCM · λ = 0.01',
+                'Robust SCM (rank 3, ridge 0.1)': 'Robust SCM · rank 3',
+                'SyntheticControlMethods SCM': 'SCM · SCMethods',
+                'Differenced SCM': 'Differenced SCM',
+            }
+            comparison.round(4)
+        """),
+        markdown("""
+            ## Average effects and pretreatment fit
+
+            The left panel reports the average post-treatment gap (ATT); the right
+            reports pretreatment root mean squared error in the same outcome units.
+            Methods retain the same order in every figure. They are not ranked by
+            estimated effect or fit. Each dot is a point estimate: **there are no
+            estimated confidence intervals in these figures**. Better pretreatment
+            fit alone does not establish causal credibility.
+        """),
+        code("""
+            fig, axes = plot_comparison(
+                results, labels=display_labels,
+                title=figure_details['case'],
+                subtitle=figure_details['periods'],
+                units=figure_details['units'],
+            )
+            comparison_files = export_figure(fig, 'comparison')
+            comparison.to_csv(figure_dir / f'{name}-estimates.csv', float_format='%.12g')
+            plt.show()
+        """),
+        markdown("""
+            ## Effect paths on a common scale
+
+            Every panel shows **observed minus counterfactual**. All twelve panels
+            share the same horizontal and vertical scales; no extreme estimate is
+            clipped. The zero line denotes no estimated effect. The dashed vertical
+            line and shaded region identify the common treatment onset and post-period.
+            Shading does not represent uncertainty. Calendar spacing is preserved,
+            including quarterly observations. Panel labels replace repeated legends.
+        """),
+        code("""
+            fig, axes = plot_effects(
+                results, labels=display_labels,
+                title=figure_details['case'],
+                subtitle='Estimated effect paths · shared scales across all twelve methods',
+                ylabel=figure_details['effect'], xlabel='Year',
+                note=figure_details['periods'] + '. Shading marks the post-period; no uncertainty intervals are shown.',
+            )
+            effects_files = export_figure(fig, 'effects')
+            plt.show()
+        """),
+        markdown("""
+            ## Inspect the donor coefficients
+
+            These are the fifteen donors with the largest absolute coefficient in
+            any method, not an exhaustive donor list. The coefficients are not
+            renormalized. SCUL and some augmented/robust estimates can have negative
+            weights or weight sums different from one. Intercepts and SDID time
+            weights are separate components; this table does not represent them.
+        """),
+        code("""
+            weights = pd.concat({label: fit.weights for label, fit in results.items()}, axis=1)
+            weights.loc[weights.abs().max(axis=1).sort_values(ascending=False).index].head(15).round(4)
+        """),
+        markdown("""
+            ## Interpretation, exports and reproducibility
+
+            Negative effects mean the observed outcome is below its estimated
+            untreated path. These are point estimates under different restrictions,
+            tuning choices and identifying assumptions. They are not an uncertainty
+            distribution. The historical reference check is distinct from the new
+            comparison specifications and their stated simplifications.
+
+            Each figure is exported at **7.2 inches wide** in three formats: PDF with
+            embedded fonts, SVG with editable text, and 300 dpi PNG. The links beside
+            each figure download the full export. The estimator summary is also saved
+            as CSV. Use vector formats for manuscripts and adjust figure size, labels
+            and captions through the plotting API before exporting to a journal's
+            requirements. Nothing depends on system fonts or an external TeX install.
+
+            `pysynth.placebo_test` provides in-space RMSPE-ratio diagnostics and a rank
+            p-value under exchangeability assumptions; it is not synthdid's placebo
+            variance estimator. The original SCUL scanner-data and ISC/costofcare
+            survey studies are not reproduced here. Re-run from a fresh kernel to
+            reproduce the source checks, estimates and figures together.
+        """),
     ]
     nb = nbf.v4.new_notebook(cells=cells)
+    # Stable identifiers keep figure updates reviewable in version control.
+    for position, cell in enumerate(nb.cells):
+        cell.id = f"{name}-{position:02d}"
     nb.metadata.kernelspec = {"display_name": "Python 3", "language": "python", "name": "python3"}
     nb.metadata.language_info = {"name": "python", "version": "3.12"}
     destination = ROOT / "empirical_examples" / f"{name}.ipynb"

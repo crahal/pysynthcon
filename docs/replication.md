@@ -5,6 +5,12 @@ methodological papers. Each downloads immutable public bytes with requests,
 verifies SHA256, checks a reference specification, and runs all twelve
 interfaces on a shared outcome panel. Executed outputs are committed.
 
+Each notebook also exports three publication figures (reference paths,
+ATT/pretreatment-fit summary, and shared-scale effect panels) as PDF, SVG and
+300 dpi PNG, with a CSV of comparison values. The [plotting guide](plotting.md)
+documents units, timing, scale and export conventions. Figures show point
+estimates without confidence intervals; the post-period shading denotes time.
+
 ## What each check establishes
 
 | Example | Reference specification | Numeric target | Predeclared tolerance |

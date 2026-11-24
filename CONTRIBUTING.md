@@ -55,6 +55,16 @@ notebook per academic setting, not per method. Do not hand-edit numerical
 outputs. Network-dependent tests carry the `network` marker and are excluded
 from the default suite.
 
+Figure changes belong in `pysynth.plotting`, with notebooks calling the public
+API. Preserve observed-minus-counterfactual signs, actual calendar spacing,
+common comparison windows and explicit units. Do not infer uncertainty from
+variation across estimators. Test artist coordinates and summary values;
+visually review the exported figures at their intended physical dimensions.
+After changes, re-execute every affected notebook and inspect its PDF, SVG
+and PNG exports under `empirical_examples/figures/`. PDF fonts must be
+embedded, captions must fit the canvas, and common scales must retain
+outlying methods. `--output-dir` also redirects linked figure files.
+
 ## Pull requests and releases
 
 Use focused commits with descriptive messages. Explain the concrete issue,

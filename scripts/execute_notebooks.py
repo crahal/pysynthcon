@@ -24,6 +24,8 @@ def main():
     os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "pysynth-mpl"))
     os.environ.setdefault("MPLBACKEND", "Agg")
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    if args.output_dir is not None:
+        os.environ["PYSYNTH_FIGURE_DIR"] = str(args.output_dir.resolve() / "figures")
     for path in sorted((root / "empirical_examples").glob("*.ipynb")):
         print(f"Executing {path.name}", flush=True)
         nb = nbformat.read(path, as_version=4)

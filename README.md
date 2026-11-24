@@ -136,11 +136,36 @@ references, and new applications. They do **not** claim to reproduce SCUL's
 original scanner-data study or the ISC/costofcare survey study. The [replication
 guide](docs/replication.md) states exact benchmarks, tolerances and limitations.
 
+## Publication figures
+
+Compare fitted estimators with shared-scale effect panels and an aligned
+ATT/pretreatment-fit summary. The library supplies readable typography,
+explicit treatment timing and outcome units; all figures remain editable
+Matplotlib objects.
+
+```python
+from pysynth import plot_comparison, plot_effects, save_figure
+
+fig, axes = plot_comparison(fits, units="packs per capita")
+save_figure(fig, "figures/california-comparison")  # PDF, SVG and 300 dpi PNG
+
+fig, axes = plot_effects(fits, ylabel="Effect on cigarette sales (packs per capita)")
+save_figure(fig, "figures/california-effects")
+```
+
+![California estimator comparison](empirical_examples/figures/california/california-comparison.png)
+
+Every notebook exports three figures and the summary values as CSV.
+Browse the [downloadable figures](empirical_examples/figures/README.md) or
+the [plotting guide](docs/plotting.md). Dots are point estimates, without
+confidence intervals; shaded time regions identify the post-period.
+
 ## Documentation and development
 
 - [User guide and data preparation](docs/data.md)
 - [Estimator equations and assumptions](docs/methods.md)
 - [Placebo diagnostics and inference](docs/inference.md)
+- [Publication plotting and export](docs/plotting.md)
 - [Backend compatibility](docs/backends.md)
 - [Replication provenance](docs/replication.md)
 - [API reference source](docs/api.rst)

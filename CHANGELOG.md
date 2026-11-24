@@ -7,6 +7,15 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Added
 
+- Publication plotting API: observed/counterfactual paths, shared-scale
+  effect panels and aligned ATT/pretreatment-RMSE summaries, with explicit
+  units, intervention markers and no invented uncertainty intervals.
+- Vector PDF/SVG and 300 dpi PNG export, embedded PDF fonts, editable SVG
+  text and scoped styling that preserves global Matplotlib settings.
+- Three redesigned figures in every empirical notebook, downloadable
+  exports and CSV comparison values, plus a dedicated plotting guide.
+- Figure tests for calendar spacing, treatment boundaries, common scales,
+  summary values, sample compatibility, font export and physical dimensions.
 - Explicit `TwoStageIndividualSC` estimator, labelled **Two-Stage Individual
   Synthetic Control (2SISC)**: nearest-neighbor screening on pretreatment
   features, followed by convex synthetic-control fitting within that group.
@@ -17,6 +26,10 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Changed
 
+- `Estimate.plot()` now uses the publication style and accepts plot labels
+  and captions while retaining its Axes return value.
+- Notebook generation uses stable cell IDs and public plotting functions;
+  custom execution directories include their linked figure exports.
 - `IndividualSC()` now unambiguously denotes vanilla ISC over the full
   eligible donor pool. Replace the initial API's
   `IndividualSC(n_neighbors=k)` with `TwoStageIndividualSC(n_neighbors=k)`.
