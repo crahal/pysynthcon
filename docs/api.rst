@@ -11,8 +11,8 @@ Panel and results
 .. automodule:: pysynth.results
    :members: Estimate, Estimator, compare
 
-Native methods
---------------
+Core and reference methods
+--------------------------
 
 .. automodule:: pysynth.classic
    :members:
@@ -37,7 +37,7 @@ Publication figures
 -------------------
 
 .. automodule:: pysynth.plotting
-   :members: LiteratureBenchmark, plot_paths, plot_effects, plot_comparison, publication_style, save_figure
+   :members: LiteratureBenchmark, ReferenceComparison, reference_comparison_table, plot_paths, plot_effects, plot_comparison, publication_style, save_figure
 
 Inference
 ---------

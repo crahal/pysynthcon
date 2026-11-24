@@ -7,15 +7,17 @@ from .inference import PlaceboResult, placebo_test
 from .panel import Panel
 from .plotting import (
     LiteratureBenchmark,
+    ReferenceComparison,
     plot_comparison,
     plot_effects,
     plot_paths,
     publication_style,
+    reference_comparison_table,
     save_figure,
 )
 from .results import Estimate, Estimator, compare
 from .scul import SCUL
-from .sdid import DifferenceInDifferences, SyntheticDID
+from .sdid import DifferenceInDifferences, SDIDInference, SyntheticDID
 
 __version__ = "0.1.0"
 __all__ = [
@@ -28,6 +30,7 @@ __all__ = [
     "TwoStageIndividualSC",
     "IndividualEstimate",
     "SyntheticDID",
+    "SDIDInference",
     "DifferenceInDifferences",
     "PySyncon",
     "SCM",
@@ -40,4 +43,6 @@ __all__ = [
     "publication_style",
     "save_figure",
     "LiteratureBenchmark",
+    "ReferenceComparison",
+    "reference_comparison_table",
 ]

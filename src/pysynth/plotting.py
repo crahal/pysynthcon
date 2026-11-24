@@ -6,10 +6,10 @@ plot settings. No function estimates uncertainty or refits an estimator.
 """
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import fill
-from typing import Mapping
+from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -46,9 +46,9 @@ class LiteratureBenchmark:
     label: str = "Published result"
 
     def __post_init__(self):
-        for field in ("headline", "citation", "source_url", "context", "label"):
-            if not isinstance(getattr(self, field), str) or not getattr(self, field).strip():
-                raise ValueError(f"{field} must be a nonempty string")
+        for name in ("headline", "citation", "source_url", "context", "label"):
+            if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
+                raise ValueError(f"{name} must be a nonempty string")
         if not self.source_url.startswith(("https://", "http://")):
             raise ValueError("source_url must be an HTTP(S) source link")
         if self.value is not None:
@@ -58,6 +58,166 @@ class LiteratureBenchmark:
                 raise ValueError("a numeric benchmark requires a two-endpoint window")
         elif self.window is not None:
             raise ValueError("window is only used with a numeric benchmark")
+
+
+@dataclass(frozen=True)
+class ReferenceComparison:
+    """Compare one fitted specification with a sourced result over a named window.
+
+    The reproduced number is calculated from ``estimate``, never supplied by
+    hand. ``mean_percent_effect`` averages 100 * (observed - counterfactual) /
+    observed; its difference is in percentage points. A rounded or approximate
+    source number is descriptive, not an optimization target or a tolerance.
+    Only the identical Estimate object receives a numeric guide in a plot.
+    """
+
+    label: str
+    estimate: Estimate = field(repr=False, compare=False)
+    reference: float
+    window: tuple
+    units: str
+    citation: str
+    source_url: str
+    context: str
+    statistic: str = "mean_effect"
+    precision: int = 3
+    reference_precision: int = 1
+    approximate: bool = False
+    source_label: str = "Published"
+    window_label: str | None = None
+
+    def __post_init__(self):
+        for name in ("label", "units", "citation", "source_url", "context", "source_label"):
+            if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
+                raise ValueError(f"{name} must be a nonempty string")
+        if not self.source_url.startswith(("https://", "http://")):
+            raise ValueError("source_url must be an HTTP(S) source link")
+        if not np.isscalar(self.reference) or not np.isfinite(self.reference):
+            raise ValueError("reference must be finite")
+        if self.statistic not in {"mean_effect", "mean_percent_effect"}:
+            raise ValueError("statistic must be mean_effect or mean_percent_effect")
+        if self.window_label is not None and (
+            not isinstance(self.window_label, str) or not self.window_label.strip()
+        ):
+            raise ValueError("window_label must be a nonempty string")
+        for value in (self.precision, self.reference_precision):
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 8:
+                raise ValueError("precision must be an integer between 0 and 8")
+        self._positions()
+
+    def _positions(self):
+        _validate(self.estimate)
+        if not isinstance(self.window, tuple) or len(self.window) != 2:
+            raise ValueError("reference window must contain two index labels")
+        positions = self.estimate.observed.index.get_indexer(self.window)
+        if positions[0] < self.estimate.n_pre or positions[1] < positions[0]:
+            raise ValueError("reference window must be an ordered, observed post-treatment window")
+        return slice(positions[0], positions[1] + 1)
+
+    @property
+    def reproduced(self) -> float:
+        """Mean effect on the source window and, if requested, percentage scale."""
+        positions = self._positions()
+        values = self.estimate.effects.iloc[positions]
+        if self.statistic == "mean_percent_effect":
+            observed = self.estimate.observed.iloc[positions]
+            if (observed == 0).any():
+                raise ValueError("percentage comparison requires nonzero observed outcomes")
+            values = 100 * values / observed
+        return float(values.mean())
+
+    @property
+    def difference(self) -> float:
+        """Reproduced minus source; source rounding remains in this difference."""
+        return self.reproduced - self.reference
+
+
+def reference_comparison_table(references: Sequence[ReferenceComparison]) -> pd.DataFrame:
+    """Return the numeric values and provenance displayed in reference strips."""
+    references = _references(references)
+    return pd.DataFrame(
+        [
+            {
+                "label": ref.label,
+                "source_label": ref.source_label,
+                "reference": ref.reference,
+                "reproduced": ref.reproduced,
+                "difference": ref.difference,
+                "units": ref.units,
+                "difference_units": "percentage points"
+                if ref.statistic == "mean_percent_effect"
+                else ref.units,
+                "window_start": ref.window[0],
+                "window_end": ref.window[1],
+                "statistic": ref.statistic,
+                "approximate": ref.approximate,
+                "citation": ref.citation,
+                "source_url": ref.source_url,
+                "context": ref.context,
+            }
+            for ref in references
+        ]
+    )
+
+
+def _references(references, estimate=None):
+    if references is None:
+        return ()
+    references = tuple(references)
+    for ref in references:
+        if not isinstance(ref, ReferenceComparison):
+            raise TypeError("references must contain ReferenceComparison objects")
+        if not np.isfinite(ref.reproduced):
+            raise ValueError("reproduced reference must be finite")
+        if estimate is not None:
+            # Sources may use a different subset of this common post-period,
+            # but a reference fit must describe the same observed case.
+            _estimates({"plotted": estimate, "reference": ref.estimate})
+    return references
+
+
+def _plot_references(references, estimate, benchmark):
+    references = _references(references, estimate)
+    if references and benchmark is not None:
+        raise ValueError("use references or benchmark, not both in the same figure")
+    return references
+
+
+def _reference_number(value, precision, *, signed=False):
+    if abs(value) < 0.5 * 10 ** (-precision):
+        value = 0.0
+    return (
+        f"{value:+,.{precision}f}".replace("-", "−")
+        if signed
+        else f"{value:,.{precision}f}".replace("-", "−")
+    )
+
+
+def _matched_references(references, estimate, *, full_window=False):
+    return [
+        ref
+        for ref in references
+        if ref.estimate is estimate
+        and ref.statistic == "mean_effect"
+        and (
+            not full_window
+            or ref.window == (estimate.observed.index[estimate.n_pre], estimate.observed.index[-1])
+        )
+    ]
+
+
+def _reference_effect(ax, x, references, estimate):
+    for ref in _matched_references(references, estimate):
+        positions = ref._positions()
+        ax.plot(
+            [x[positions.start], x[positions.stop - 1]],
+            [ref.reference, ref.reference],
+            color=LITERATURE,
+            linewidth=1,
+            linestyle=(0, (2, 2)),
+            label=f"{ref.source_label}: {ref.label}",
+            zorder=2.5,
+        )
 
 
 def _validate_benchmark(benchmark, estimate):
@@ -274,7 +434,7 @@ def _limits(values):
     return low - span * 0.08, high + span * 0.12
 
 
-def _figure_grid(figsize, title, subtitle, note, benchmark=None):
+def _figure_grid(figsize, title, subtitle, note, benchmark=None, references=()):
     """Reserve real layout rows for headings and notes, avoiding clipped text."""
     _, plt = _matplotlib()
     width, height = figsize
@@ -290,7 +450,7 @@ def _figure_grid(figsize, title, subtitle, note, benchmark=None):
     fig = plt.figure(figsize=figsize, layout="constrained")
     fig.get_layout_engine().set(h_pad=0.06, w_pad=0.06, hspace=0.045, wspace=0.05)
     ratios = [head_height, max(1, height - head_height - foot_height), foot_height]
-    if benchmark is not None:
+    if benchmark is not None or references:
         ratios.insert(1, 0.65)
     outer = fig.add_gridspec(len(ratios), 1, height_ratios=ratios)
     if benchmark is not None:
@@ -335,6 +495,8 @@ def _figure_grid(figsize, title, subtitle, note, benchmark=None):
                 artist.set_url(benchmark.source_url)
             artists.append(artist)
         fig._pysynth_benchmark_layout = (strip, artists, originals)
+    elif references:
+        _reference_strip(fig, outer[1], references)
     heading = fig.add_subplot(outer[0])
     heading.set_axis_off()
     title_artist = subtitle_artist = note_artist = None
@@ -390,6 +552,64 @@ def _figure_grid(figsize, title, subtitle, note, benchmark=None):
     return fig, outer[-2]
 
 
+def _reference_strip(fig, cell, references):
+    """A compact, explicitly paired source/result table above the plotting area."""
+    from matplotlib.patches import Rectangle
+
+    strip = fig.add_subplot(cell)
+    strip.set_axis_off()
+    strip.add_patch(
+        Rectangle((0, 0), 1, 1, transform=strip.transAxes, facecolor="#F7F3ED", edgecolor="none")
+    )
+    strip.plot(
+        [0, 0], [0, 1], transform=strip.transAxes, color=LITERATURE, linewidth=2, clip_on=False
+    )
+
+    def text(x, content, *, size=8, color=INK, align="left", weight="normal"):
+        artist = strip.text(
+            x,
+            1,
+            content,
+            transform=strip.transAxes,
+            va="top",
+            ha=align,
+            fontsize=size,
+            color=color,
+            fontweight=weight,
+            linespacing=1.35,
+        )
+        artist.set_in_layout(False)
+        return artist
+
+    heading = text(0.018, "REFERENCE CHECK · Δ = reproduced − source", size=7.5, color=MUTED)
+    headings = [
+        text(x, label, size=7.3, color=MUTED, align="right")
+        for x, label in [(0.62, "Source"), (0.80, "Reproduced"), (0.982, "Δ")]
+    ]
+    rows = []
+    for ref in references:
+        window = ref.window_label or f"{ref.window[0]}–{ref.window[1]}"
+        label = f"{ref.label} · {window}\n{ref.units}"
+        label_artist = text(0.018, label, size=8, weight="semibold")
+        prefix = "≈ " if ref.approximate else ""
+        values = [
+            prefix + _reference_number(ref.reference, ref.reference_precision),
+            _reference_number(ref.reproduced, ref.precision),
+            prefix
+            + _reference_number(ref.difference, ref.precision, signed=True)
+            + (" pp" if ref.statistic == "mean_percent_effect" else ""),
+        ]
+        value_artists = [
+            text(x, value, size=9, align="right", color=color, weight="semibold")
+            for x, value, color in zip((0.62, 0.80, 0.982), values, (LITERATURE, BLUE, INK))
+        ]
+        provenance = f"{ref.source_label}: {ref.citation}. {ref.context}"
+        source_artist = text(0.018, provenance, size=7, color=MUTED)
+        source_artist.set_url(ref.source_url)
+        rows.append((label_artist, label, value_artists, source_artist, provenance))
+    fig._pysynth_reference_layout = (strip, heading, headings, rows)
+
+
 def _wrap_measured(text, artist, renderer, width):
     lines = []
     for paragraph in str(text).splitlines():
@@ -442,6 +662,7 @@ def _layout_captions(fig):
     head = heights[0] + heights[1] + 0.12
     foot = heights[2] + 0.07 if note is not None else 0.02
     benchmark_layout = getattr(fig, "_pysynth_benchmark_layout", None)
+    reference_layout = getattr(fig, "_pysynth_reference_layout", None)
     benchmark_height = 0
     if benchmark_layout is not None:
         strip, artists, originals = benchmark_layout
@@ -456,15 +677,43 @@ def _layout_captions(fig):
         for artist, text_height in zip(artists, text_heights):
             artist.set_y(1 - offset / benchmark_height)
             offset += text_height + 0.015
+    elif reference_layout is not None:
+        strip, heading, headings, rows = reference_layout
+        width = strip.get_window_extent(renderer).width
+        row_heights = []
+        for label, original, values, source, provenance in rows:
+            label.set_text(_wrap_measured(original, label, renderer, width * 0.45))
+            source.set_text(_wrap_measured(provenance, source, renderer, width * 0.96))
+            row_height = max(0.22, len(label.get_text().splitlines()) * 8 / 72 * 1.4)
+            source_height = len(source.get_text().splitlines()) * 7 / 72 * 1.4
+            row_heights.append((row_height, source_height))
+        benchmark_height = 0.38 + sum(sum(heights) + 0.13 for heights in row_heights)
+        heading.set_y(1 - 0.055 / benchmark_height)
+        for artist in headings:
+            artist.set_y(1 - 0.23 / benchmark_height)
+        offset = 0.40
+        for (label, _, values, source, _), (row_height, source_height) in zip(rows, row_heights):
+            for artist in [label, *values]:
+                artist.set_y(1 - offset / benchmark_height)
+            offset += row_height + 0.025
+            source.set_y(1 - offset / benchmark_height)
+            offset += source_height + 0.105
     body_height = max(1, fig.get_figheight() - head - foot - benchmark_height)
     ratios = [head, body_height, foot]
-    if benchmark_layout is not None:
+    if benchmark_layout is not None or reference_layout is not None:
         ratios.insert(1, benchmark_height)
     outer.set_height_ratios(ratios)
     for artist, original in getattr(fig, "_pysynth_panel_titles", []):
         width = artist.axes.get_window_extent(renderer).width * 0.98
         artist.set_text(_wrap_measured(original, artist, renderer, width))
     fig.canvas.draw()
+    # Shared labels belong beside the data panels, not halfway down a figure
+    # whose upper half may contain several source/reference rows.
+    body_label = getattr(fig, "_pysynth_body_y_label", None)
+    if body_label is not None:
+        artist, axes = body_label
+        positions = [ax.get_position() for ax in axes if ax.get_visible()]
+        artist.set_y((min(box.y0 for box in positions) + max(box.y1 for box in positions)) / 2)
 
 
 def plot_paths(
@@ -481,6 +730,7 @@ def plot_paths(
     counterfactual_label: str = "Synthetic control",
     intervention_label: str | None = None,
     benchmark: LiteratureBenchmark | None = None,
+    references: Sequence[ReferenceComparison] | None = None,
     color: str = BLUE,
     figsize: tuple | None = None,
 ):
@@ -494,22 +744,34 @@ def plot_paths(
     ``note`` reserve figure-level caption space and require ``ax=None``.
     ``benchmark`` adds a sourced annotation; its numeric guide is drawn only
     with ``effects=True``, never on an outcome-level axis.
+    ``references`` displays source, reproduction and signed difference for
+    explicitly matched specifications. Use it instead of ``benchmark``.
     """
     _validate(estimate)
     _validate_benchmark(benchmark, estimate)
-    if ax is not None and (subtitle is not None or note is not None or benchmark is not None):
+    references = _plot_references(references, estimate, benchmark)
+    if ax is not None and (
+        subtitle is not None or note is not None or benchmark is not None or references
+    ):
         raise ValueError(
-            "subtitle, note and benchmark require ax=None; add captions to your parent figure"
+            "subtitle, note and references/benchmark require ax=None; add captions to your parent figure"
         )
     with publication_style():
         own_figure = ax is None
         if ax is None:
             fig, body = _figure_grid(
-                figsize or (7.2, 4.55 if benchmark else 3.8),
+                figsize
+                or (
+                    7.2,
+                    3.8
+                    + (0.75 if benchmark else 0)
+                    + (0.4 + 0.85 * len(references) if references else 0),
+                ),
                 title or estimate.method,
                 subtitle,
                 note,
                 benchmark,
+                references,
             )
             ax = fig.add_subplot(body)
         x, kind = _time(estimate.observed.index)
@@ -522,7 +784,12 @@ def plot_paths(
                 x, estimate.effects, color=color, linewidth=1.65, label=estimate.method, zorder=3
             )
             _benchmark_effect(ax, x, estimate.n_pre, benchmark)
-            ax.set_ylim(*_effect_limits(estimate.effects, benchmark))
+            _reference_effect(ax, x, references, estimate)
+            values = np.append(
+                estimate.effects,
+                [ref.reference for ref in _matched_references(references, estimate)],
+            )
+            ax.set_ylim(*_effect_limits(values, benchmark))
         else:
             ax.plot(x, estimate.observed, color=INK, linewidth=1.8, label=observed_label, zorder=3)
             ax.plot(
@@ -590,6 +857,7 @@ def plot_effects(
     ylim: tuple | None = None,
     figsize: tuple | None = None,
     benchmark: LiteratureBenchmark | None = None,
+    references: Sequence[ReferenceComparison] | None = None,
     note: str
     | None = "Common outcome sample and treatment date. Shading marks the post-period; no uncertainty intervals are shown.",
 ):
@@ -602,6 +870,8 @@ def plot_effects(
     are hidden. The returned array always has shape (nrows, ncols).
     A numeric ``benchmark`` adds a dotted source mean over the matching
     post-period, with its citation and specification in a separate strip.
+    ``references`` instead pairs each published result with its own fitted
+    specification. Numeric guides occur only on the matching method's panel.
     """
     _estimates(estimates)
     if isinstance(ncols, bool) or not isinstance(ncols, (int, np.integer)) or ncols < 1:
@@ -612,20 +882,39 @@ def plot_effects(
     nrows = (len(estimates) + ncols - 1) // ncols
     reference = next(iter(estimates.values()))
     _validate_benchmark(benchmark, reference)
+    references = _plot_references(references, reference, benchmark)
     with publication_style():
         fig, body = _figure_grid(
-            figsize or (7.2, 1.1 + 1.85 * nrows + (0.75 if benchmark else 0)),
+            figsize
+            or (
+                7.2,
+                1.1
+                + 1.85 * nrows
+                + (0.75 if benchmark else 0)
+                + (0.4 + 0.85 * len(references) if references else 0),
+            ),
             title,
             subtitle,
             note,
             benchmark,
+            references,
         )
         grid = body.subgridspec(nrows, ncols, hspace=0.22, wspace=0.12)
         axes = np.empty((nrows, ncols), dtype=object)
         fig._pysynth_panel_titles = []
         x, kind = _time(reference.observed.index)
         common = ylim or _effect_limits(
-            np.concatenate([r.effects.to_numpy() for r in estimates.values()]), benchmark
+            np.concatenate(
+                [
+                    *[r.effects.to_numpy() for r in estimates.values()],
+                    [
+                        ref.reference
+                        for result in estimates.values()
+                        for ref in _matched_references(references, result)
+                    ],
+                ]
+            ),
+            benchmark,
         )
         for position, (name, result) in enumerate(estimates.items()):
             row, col = divmod(position, ncols)
@@ -645,11 +934,18 @@ def plot_effects(
                 zorder=3,
             )
             _benchmark_effect(ax, x, reference.n_pre, benchmark)
+            _reference_effect(ax, x, references, result)
             ax.set_ylim(
                 *(
                     common
                     if sharey or ylim is not None
-                    else _effect_limits(result.effects, benchmark)
+                    else _effect_limits(
+                        np.append(
+                            result.effects,
+                            [ref.reference for ref in _matched_references(references, result)],
+                        ),
+                        benchmark,
+                    )
                 )
             )
             display_name = (labels or {}).get(name, name)
@@ -675,7 +971,8 @@ def plot_effects(
             row, col = divmod(position, ncols)
             axes[row, col] = fig.add_subplot(grid[row, col])
             axes[row, col].set_visible(False)
-        fig.supylabel(ylabel, fontsize=9)
+        shared_label = fig.supylabel(ylabel, fontsize=9)
+        fig._pysynth_body_y_label = (shared_label, tuple(axes.flat))
         _finish_figure(fig)
         return fig, axes
 
@@ -690,6 +987,7 @@ def plot_comparison(
     units: str = "outcome units",
     figsize: tuple | None = None,
     benchmark: LiteratureBenchmark | None = None,
+    references: Sequence[ReferenceComparison] | None = None,
     note: str
     | None = "Dots are point estimates, without confidence intervals. Pretreatment RMSE describes fit, not causal credibility.",
 ):
@@ -701,18 +999,29 @@ def plot_comparison(
     error bars, significance tests, rankings or uncertainty are inferred.
     ``benchmark`` adds a sourced annotation and, if numeric, a dotted guide
     on the ATT axis only. Its averaging window must match the full post-period.
+    ``references`` adds paired source/result values instead; a source diamond
+    is drawn only beside its exact fitted method and on the same ATT window.
     """
     table = _estimates(estimates)
     _validate_benchmark(benchmark, next(iter(estimates.values())))
+    references = _plot_references(references, next(iter(estimates.values())), benchmark)
     with publication_style():
         from matplotlib.ticker import FuncFormatter, MaxNLocator
 
         fig, body = _figure_grid(
-            figsize or (7.2, 1.55 + 0.31 * len(table) + (0.75 if benchmark else 0)),
+            figsize
+            or (
+                7.2,
+                1.55
+                + 0.31 * len(table)
+                + (0.75 if benchmark else 0)
+                + (0.4 + 0.85 * len(references) if references else 0),
+            ),
             title,
             subtitle,
             note,
             benchmark,
+            references,
         )
         grid = body.subgridspec(1, 2, width_ratios=[1.2, 1], wspace=0.15)
         axes = np.array([fig.add_subplot(grid[0]), fig.add_subplot(grid[1])])
@@ -754,6 +1063,21 @@ def plot_comparison(
                     bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.8},
                 )
             low, high = min(0, values.min()), max(0, values.max())
+            if metric == "att":
+                for row, result in enumerate(estimates.values()):
+                    for ref in _matched_references(references, result, full_window=True):
+                        ax.scatter(
+                            [ref.reference],
+                            [row],
+                            s=36,
+                            marker="D",
+                            facecolors="none",
+                            edgecolors=LITERATURE,
+                            linewidth=1.1,
+                            zorder=4,
+                            label=f"{ref.source_label}: {ref.label}",
+                        )
+                        low, high = min(low, ref.reference), max(high, ref.reference)
             if metric == "att" and benchmark is not None and benchmark.value is not None:
                 ax.axvline(
                     benchmark.value,

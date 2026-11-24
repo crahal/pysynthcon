@@ -10,10 +10,12 @@ import pytest
 from pysynth import (
     Estimate,
     LiteratureBenchmark,
+    ReferenceComparison,
     SyntheticControl,
     plot_comparison,
     plot_effects,
     plot_paths,
+    reference_comparison_table,
     save_figure,
 )
 
@@ -314,3 +316,151 @@ def test_calendar_benchmark_uses_calendar_coordinates():
     ax = plot_paths(fit, effects=True, benchmark=benchmark)
     line = next(line for line in ax.lines if line.get_label() == "Literature mean ATT")
     np.testing.assert_allclose(line.get_xdata(), date2num(times[2:].to_pydatetime()))
+
+
+def matched_reference(fit, **kwargs):
+    fields = dict(
+        label="Historical SCM",
+        estimate=fit,
+        reference=1.8,
+        window=(2004, 2010),
+        units="dollars per person",
+        citation="Authors (2021), Table 1",
+        source_url="https://example.org/paper",
+        context="Same historical specification.",
+    )
+    fields.update(kwargs)
+    return ReferenceComparison(**fields)
+
+
+def test_reference_values_use_source_window_and_percentage_denominator():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    whole = matched_reference(fit)
+    subset = matched_reference(fit, window=(2010, 2010))
+    percent = matched_reference(fit, statistic="mean_percent_effect", reference=30)
+    table = reference_comparison_table([whole, subset, percent])
+    np.testing.assert_allclose(table.reproduced, [2, 3, (100 / 5 + 300 / 7) / 2])
+    np.testing.assert_allclose(table.difference, table.reproduced - table.reference)
+    assert table.loc[2, "difference_units"] == "percentage points"
+    # Averaging ratios is deliberately different from dividing aggregate means.
+    assert percent.reproduced != 100 * fit.att / fit.observed.iloc[2:].mean()
+    assert table.loc[1, "window_start"] == 2010
+
+
+def test_matched_guides_do_not_spread_to_other_methods_or_incompatible_axes():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    other = replace(fit, method="Another specification")
+    ref = matched_reference(fit)
+    _, axes = plot_effects({"Historical SCM": fit, "Other": other}, references=[ref])
+    matching = [
+        line for line in axes[0, 0].lines if line.get_label() == "Published: Historical SCM"
+    ]
+    assert len(matching) == 1
+    np.testing.assert_allclose(matching[0].get_ydata(), [1.8, 1.8])
+    assert not any(line.get_label().startswith("Published:") for line in axes[0, 1].lines)
+    _, axes = plot_comparison({"Historical SCM": fit, "Other": other}, references=[ref])
+    assert len(axes[0].collections) == 2
+    np.testing.assert_allclose(axes[0].collections[1].get_offsets(), [[1.8, 0]])
+    assert len(axes[1].collections) == 1
+    ax = plot_paths(fit, references=[ref])
+    assert not any(line.get_label().startswith("Published:") for line in ax.lines)
+
+
+def test_subset_and_percentage_references_never_become_full_period_att_markers():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    subset = matched_reference(fit, window=(2010, 2010))
+    percent = matched_reference(fit, statistic="mean_percent_effect", reference=30)
+    _, axes = plot_comparison({"Historical SCM": fit}, references=[subset, percent])
+    assert len(axes[0].collections) == len(axes[1].collections) == 1
+    ax = plot_paths(fit, effects=True, references=[subset, percent])
+    guides = [line for line in ax.lines if line.get_label().startswith("Published:")]
+    assert len(guides) == 1
+    np.testing.assert_allclose(guides[0].get_xdata(), [2010, 2010])
+
+
+@pytest.mark.parametrize("function", [plot_paths, plot_effects, plot_comparison])
+def test_reference_comparisons_reject_a_different_observed_case_before_plotting(function):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    different = replace(fit, observed=fit.observed + 1)
+    before = plt.get_fignums()
+    with pytest.raises(ValueError):
+        function(
+            fit if function is plot_paths else {"SCM": fit},
+            references=[matched_reference(different)],
+        )
+    assert plt.get_fignums() == before
+
+
+@pytest.mark.parametrize("window", [(2001, 2010), (2004, 2008), (2010, 2004)])
+def test_reference_windows_must_be_observed_ordered_post_periods(window):
+    with pytest.raises(ValueError, match="reference window"):
+        matched_reference(example(pd.Index([2000, 2001, 2004, 2010])), window=window)
+
+
+def test_paired_reference_strip_exports_signed_differences_without_overlaps(tmp_path):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    refs = [
+        matched_reference(fit, label="Historical synthetic control with covariates"),
+        matched_reference(
+            fit,
+            reference=30,
+            approximate=True,
+            statistic="mean_percent_effect",
+            units="% of observed GDP",
+            precision=2,
+            reference_precision=0,
+        ),
+        matched_reference(
+            fit,
+            reference=2.00001,
+            precision=3,
+            reference_precision=5,
+            source_label="Upstream software",
+        ),
+    ]
+    fig, _ = plot_comparison({"SCM": fit}, references=refs)
+    paths = save_figure(fig, tmp_path / "paired")
+    svg = paths[1].read_text()
+    for label in [
+        "REFERENCE CHECK",
+        "Reproduced",
+        "+0.200",
+        "≈ 30",
+        " pp",
+        "+0.000",
+        "https://example.org/paper",
+    ]:
+        assert label in svg
+    assert "−0.000" not in svg
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    strip, heading, headings, rows = fig._pysynth_reference_layout
+    bounds = strip.get_window_extent(renderer)
+    artists = [heading, *headings]
+    for label, _, values, source, _ in rows:
+        artists.extend([label, *values, source])
+        assert label.get_window_extent(renderer).x1 < values[0].get_window_extent(renderer).x0
+        for previous, following in zip(values, values[1:]):
+            assert (
+                previous.get_window_extent(renderer).x1 < following.get_window_extent(renderer).x0
+            )
+    for artist in artists:
+        text = artist.get_window_extent(renderer)
+        assert bounds.x0 - 2 <= text.x0 < text.x1 <= bounds.x1 + 2
+        assert bounds.y0 - 2 <= text.y0 < text.y1 <= bounds.y1 + 2
+    for previous, following in zip(rows, rows[1:]):
+        assert (
+            previous[3].get_window_extent(renderer).y0 > following[0].get_window_extent(renderer).y1
+        )
+
+
+def test_shared_effect_label_is_centered_on_panels_after_reference_strip_and_resize(tmp_path):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    refs = [matched_reference(fit) for _ in range(3)]
+    fig, axes = plot_effects({"SCM": fit, "Another": replace(fit)}, references=refs)
+    for height in (fig.get_figheight(), fig.get_figheight() + 1):
+        fig.set_figheight(height)
+        save_figure(fig, tmp_path / "label.svg")
+        positions = [ax.get_position() for ax in axes.flat if ax.get_visible()]
+        expected = (min(box.y0 for box in positions) + max(box.y1 for box in positions)) / 2
+        assert fig._supylabel.get_position()[1] == pytest.approx(expected, abs=0.002)
