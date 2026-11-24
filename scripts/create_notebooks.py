@@ -9,7 +9,7 @@ EXAMPLES = {
     "california": (
         "California Proposition 99",
         "Cigarette consumption, 1970–2000; first affected year 1989. Outcome: cigarette packs per capita.",
-        "The SDID reference is −15.6038278727 packs per person. This is the no-covariate example in Arkhangelsky et al. (2021), [AER](https://doi.org/10.1257/aer.20190159), using the tobacco-control setting of Abadie, Diamond and Hainmueller (2010), [JASA](https://doi.org/10.1198/jasa.2009.ap08746). The latter's covariate-based SCM specification is **not** reproduced by the outcome-only SCM row below.",
+        "The SDID reference is −15.6038278727 packs per person. This is the no-covariate example in Arkhangelsky et al. (2021), [AER](https://doi.org/10.1257/aer.20190159), using the tobacco-control setting of Abadie, Diamond and Hainmueller (2010), [JASA](https://doi.org/10.1198/jasa.2009.ap08746). The final section reconstructs the 2010 study’s covariate-based SCM and all 39 state reassignments.",
     ),
     "basque": (
         "The economic costs of conflict in the Basque Country",
@@ -112,7 +112,7 @@ def build(name, title, description, reference):
                 "`python .local/reference/scripts/install_r_references.py --library .r-library` after "
                 "following [the R setup guide](../docs/reference_backends.md). "
                 "The notebook downloads immutable public data with "
-                "**requests**, checks the reference specification, and exports five "
+                f"**requests**, checks the reference specification, and exports {'six' if name == 'california' else 'five'} "
                 "publication figures locally as PDF, SVG and 300 dpi PNG. "
                 f"Figures, result tables and diagnostics are written under `outputs/empirical_examples/{name}/` "
                 "relative to the checkout root. "
@@ -637,14 +637,116 @@ def build(name, title, description, reference):
             requirements. Nothing depends on system fonts or an external TeX install.
 
             `pysynth.placebo_test` provides in-space RMSPE-ratio diagnostics and a
-            rank statistic. The treated and placebo fits have different donor-pool sizes,
-            so exchangeability alone does not make this an exact randomization test.
+            rank statistic. The default untreated-only design has different donor-pool sizes. The
+            reassignment design uses all other units for each fit. A randomization
+            interpretation requires a defensible assignment mechanism and a sharp null.
             It is not synthdid's placebo
             variance estimator. The original SCUL scanner-data and ISC/costofcare
             survey studies are not reproduced here. Re-run from a fresh kernel to
             reproduce the source checks, estimates and figures together.
         """),
     ]
+    if name == "california":
+        cells[-1:-1] = [
+            markdown("""
+                ## Could another state have produced California’s gap?
+
+                Abadie, Diamond and Hainmueller assigned Proposition 99 to each of the 39 states
+                in turn. The other 38 states supplied the donors each time. This section uses their
+                smoking data with covariates. For each assignment we fit the predictor weights
+                and donor weights afresh using the original pretreatment years. The historical
+                comparison runs the original R Synth package. A second analysis runs the
+                checked Python predictor optimizer on the same rows, states and years.
+                Both use the authors’ predictor and donor order.
+                [Study, Figures 4–8](https://economics.mit.edu/sites/default/files/publications/Synthetic%20Control%20Methods.pdf#page=9)
+            """),
+            code("""
+                from pysynth import placebo_test, plot_placebo_gaps
+                from pysynth.datasets import load_dataset
+                from pysynth.replication import california_tobacco_estimator
+
+                tobacco = load_dataset("california_tobacco")
+                tobacco_panel = DATASETS["california_tobacco"].panel(tobacco)
+                assignments = placebo_test(
+                    partial(california_tobacco_estimator, tobacco, backend="r-synth"), tobacco_panel,
+                    donor_pool="reassign", n_jobs=4,
+                )
+                reference_versions = pd.Series({
+                    key: assignments.treated.metadata[key]
+                    for key in ("reference_package", "reference_version", "r_version", "rpy2_version")
+                })
+                reference_versions.to_csv(output_dir / f'{name}-placebo-reference-versions.csv')
+                assert reference_versions["reference_version"] == "1.1-10", reference_versions
+                python_states = placebo_test(
+                    partial(california_tobacco_estimator, tobacco, backend="python"), tobacco_panel,
+                    donor_pool="reassign", n_jobs=4,
+                )
+                python_states.gaps.to_csv(output_dir / f'{name}-python-placebo-gaps.csv')
+                python_states.table.to_csv(output_dir / f'{name}-python-placebo-ranks.csv')
+                assignments.gaps.to_csv(output_dir / f'{name}-placebo-gaps.csv')
+                assignments.table.to_csv(output_dir / f'{name}-placebo-ranks.csv')
+                checks = []
+                for multiplier, published_count in [(None, 38), (20, 34), (5, 29), (2, 19)]:
+                    screened = assignments.with_pre_mspe_cutoff(multiplier)
+                    python_screen = python_states.with_pre_mspe_cutoff(multiplier)
+                    checks.append({
+                        "pre_MSPE_screen": "All" if multiplier is None else f"{multiplier}×",
+                        "paper_placebos": published_count,
+                        "r_synth_placebos": int(screened.table.eligible.sum()) - 1,
+                        "r_synth_rank": screened.rank, "r_synth_rank_fraction": screened.p_value,
+                        "python_placebos": int(python_screen.table.eligible.sum()) - 1,
+                        "python_rank": python_screen.rank, "python_rank_fraction": python_screen.p_value,
+                    })
+                assert assignments.rank == 1 and len(assignments.table) == 39
+                checks = pd.DataFrame(checks)
+                checks.to_csv(output_dir / f'{name}-placebo-screens.csv', index=False)
+                print(f'Figure 8 rank: paper 1/39, R Synth {assignments.rank}/39, Python {python_states.rank}/39')
+                for label, result in [("R Synth", assignments), ("Python", python_states)]:
+                    print(f'{label} post/pre MSPE: {result.table.loc["California", "mspe_ratio"]:.1f} (paper ≈ 130)')
+                    print(f'{label} year-2000 gap: {result.treated.effects.loc[2000]:.2f} (paper ≈ −26 packs)')
+                display(checks)
+
+                # Independently reconstruct California from the rounded donor weights in Table 2.
+                printed = pd.Series({"Colorado": 0.164, "Connecticut": 0.069, "Montana": 0.199,
+                                     "Nevada": 0.234, "Utah": 0.334})
+                sales = tobacco.pivot(index="year", columns="state", values="cigsale")
+                printed_gap = sales["California"] - sales[printed.index] @ printed
+                printed_gap.to_csv(output_dir / f'{name}-table-2-reconstructed-gap.csv', header=["gap"])
+                print(f'Published rounded weights alone give {printed_gap.loc[2000]:.2f} packs in 2000.')
+            """),
+            code("""
+                fig, ax = plot_placebo_gaps(
+                    assignments.with_pre_mspe_cutoff(5), treated_label="California",
+                    title="California’s cigarette-sales gap among state placebos",
+                    xlabel="Year", ylabel="Gap in annual packs per capita",
+                    note="ADH (2010), Figures 6 and 8. At the same cutoff the paper retained 29 placebo states. "
+                         "The published and R Synth unscreened ranks are both 1/39.",
+                )
+                gap_2000 = assignments.treated.effects.loc[2000]
+                ax.text(0.025, 0.065, f"California in 2000   ·   paper ≈ −26   ·   R Synth {gap_2000:.2f}",
+                        transform=ax.transAxes, fontsize=8, fontfamily=ax.xaxis.label.get_family(),
+                        color=ax.lines[-1].get_color(),
+                        va="bottom", ha="left")
+                save_figure(fig, output_dir / f'{name}-placebo-paths')
+                plt.show()
+            """),
+            markdown("""
+                The cutoff compares **mean squared** pretreatment gaps. A fivefold cutoff on
+                root-mean-squared gaps would allow a 25-fold difference on the paper’s scale.
+                Screening changes the set of assignments in the denominator. California
+                adopted the policy through a ballot initiative, so the all-state rank describes
+                its extremeness under hypothetical uniform assignment. The figure and CSV
+                report the fitted counts alongside the authors’ counts because predictor
+                optimization can give different synthetic controls for some states. For the
+                stated predictor years, the Stata companion file gives a 15–24 age share
+                of 17.35% in California. Table 1 prints 17.40%. The authors’ MATLAB
+                data give the same 17.35%. Their table weights donor-state means by population.
+                Both backends use the authors’ predictor and state order. The Python default uses a
+                single equal start for predictor importance. R Synth uses equal and regression-based
+                starts and evaluates multiple optimizers against pretreatment outcome loss.
+                [Original MATLAB example](https://www.mit.edu/~jhainm/synthpage.html)
+            """),
+        ]
     nb = nbf.v4.new_notebook(cells=cells)
     # Stable identifiers keep figure updates reviewable in version control.
     for position, cell in enumerate(nb.cells):
