@@ -59,24 +59,17 @@ class Estimate:
             }
         )
 
-    def plot(self, *, ax=None, effects: bool = False):
-        """Plot paths (or effects); requires the ``plot`` extra. Returns an Axes."""
-        import matplotlib.pyplot as plt
+    def plot(self, *, ax=None, effects: bool = False, **kwargs):
+        """Plot publication-style paths or effects and return a Matplotlib Axes.
 
-        if ax is None:
-            _, ax = plt.subplots(figsize=(9, 4))
-        if effects:
-            ax.plot(self.effects.index, self.effects, label=self.method)
-            ax.axhline(0, color="grey", linewidth=0.8)
-            ax.set_ylabel("Observed − counterfactual")
-        else:
-            ax.plot(self.observed.index, self.observed, label="Observed")
-            ax.plot(self.counterfactual.index, self.counterfactual, label=self.method)
-            ax.set_ylabel("Outcome")
-        ax.axvline(self.observed.index[self.n_pre], color="grey", linestyle="--")
-        ax.set_xlabel(self.observed.index.name or "Time")
-        ax.legend()
-        return ax
+        Additional keyword arguments go to :func:`pysynth.plot_paths`, including
+        ``title``, ``ylabel``, ``xlabel``, and ``intervention_label``. Requires
+        the optional ``plot`` extra. For estimator comparisons, use
+        :func:`pysynth.plot_effects` or :func:`pysynth.plot_comparison`.
+        """
+        from .plotting import plot_paths
+
+        return plot_paths(self, ax=ax, effects=effects, **kwargs)
 
 
 def make_estimate(

@@ -5,6 +5,7 @@ from .classic import SyntheticControl
 from .individual import IndividualEstimate, IndividualSC, TwoStageIndividualSC
 from .inference import PlaceboResult, placebo_test
 from .panel import Panel
+from .plotting import plot_comparison, plot_effects, plot_paths, publication_style, save_figure
 from .results import Estimate, Estimator, compare
 from .scul import SCUL
 from .sdid import DifferenceInDifferences, SyntheticDID
@@ -26,4 +27,9 @@ __all__ = [
     "compare",
     "placebo_test",
     "PlaceboResult",
+    "plot_paths",
+    "plot_effects",
+    "plot_comparison",
+    "publication_style",
+    "save_figure",
 ]

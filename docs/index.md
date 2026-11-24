@@ -11,6 +11,7 @@ getting-started
 data
 methods
 inference
+plotting
 backends
 replication
 api
