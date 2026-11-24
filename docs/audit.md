@@ -38,8 +38,10 @@ a feasible inner-loss decrease of `1.44e-6`, exceeding the solver tolerance
 of `1e-6`. Recovering that solve changed Missouri's weight from 0.645 to
 0.833. The candidate's pooled held-out RMSE fell from 0.0490735 to
 0.0490474 log points, preserving its rank of seventh among eight candidates.
-The four examples retain identical SDID resampling plans at both iteration
-budgets. The source-comparison CSVs preserve numerical precision alongside
+The other 71 candidate-fold results and all donor-exclusion results matched
+the prior exports. Across the four examples, all 1,600 original- and extended-budget
+SDID draw values and their stopping diagnostics matched the previous run.
+The source-comparison CSVs preserve numerical precision alongside
 the shorter labels printed on the figures.
 
 ## Errors corrected
@@ -166,7 +168,10 @@ validation, sensitivity and evaluation-plotting tests passed in a second
 environment with NumPy 2.5.4 and SciPy 1.16.2. Independent SDID reruns match all
 inference draws within `2.76e-14`; SCUL screening matches 1,840 direct caret
 column/window decisions. All 16 canonical pysyncon adapter fits pass checked
-termination. Notebook source checks compile every code cell and parse generated
+termination. Across the four notebooks, all 80 starts for SyntheticControlMethods
+SCM and differenced SCM ended with a successful solve. The optimizer diagnostics
+retain each attempted solver and the reason for any recovery.
+Notebook source checks compile every code cell and parse generated
 diagnostic JSON. All four empirical notebooks were re-executed successfully:
 48 comparison fits, twenty embedded figures, ten starts per SyntheticControlMethods
 fit, 50 draws per ISC fit, the authors' non-resampling default 2SISC specification,

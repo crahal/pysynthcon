@@ -24,7 +24,7 @@ EXAMPLES = {
     "kansas": (
         "The Kansas income-tax cuts",
         "Quarterly log GDP per capita, 1990 Q1–2016 Q1; treatment starts 2012.25 as in the authors' vignette. Outcome: natural log GDP per capita.",
-        "Ben-Michael, Feller and Rothstein (2021), [JASA](https://doi.org/10.1080/01621459.2021.1929245). Reproduce the no-covariate Ridge ASCM example from the authors' [augsynth vignette](https://github.com/ebenmichael/augsynth/blob/master/vignettes/singlesynth-vignette.md): ATT −0.0401, tolerance 0.001. The exact percent change corresponding to a log gap is `100 * expm1(gap)`. The 2012.25 onset follows the reference data and should not be interpreted as a fresh legislative-timing claim.",
+        "Ben-Michael, Feller and Rothstein (2021), [JASA](https://doi.org/10.1080/01621459.2021.1929245). Reproduce the no-covariate Ridge ASCM example from the authors' [augsynth vignette](https://github.com/ebenmichael/augsynth/blob/7e70072232fe75057aa8b5d7af08c7e1aef53ae8/vignettes/singlesynth-vignette.md): ATT −0.0401, printed to four decimal places. The exact percent change corresponding to a log gap is `100 * expm1(gap)`. The 2012.25 onset follows the reference data and should not be interpreted as a fresh legislative-timing claim.",
     ),
 }
 
@@ -91,6 +91,11 @@ def details(summary, source):
 
 
 def build(name, title, description, reference):
+    donor_display_names = (
+        "\n                unit_labels=data.groupby('fips')['state'].first().to_dict(),"
+        if name == "kansas"
+        else ""
+    )
     cells = [
         markdown(
             f"# {title}\n\n{description}\n\n"
@@ -120,6 +125,8 @@ def build(name, title, description, reference):
             import os
             import json
             import time
+            import warnings
+            from collections import Counter
             from dataclasses import replace
             from functools import partial
             from html import escape
@@ -188,9 +195,9 @@ def build(name, title, description, reference):
             def export_figure(fig, kind):
                 paths = save_figure(fig, figure_dir / f'{{name}}-{{kind}}')
                 paths_text = ' · '.join(
-                    f'[{{p.suffix[1:].upper()}}](<{{os.path.relpath(p, example_dir)}}>)' for p in paths
+                    f'`{{os.path.relpath(p, example_dir)}}`' for p in paths
                 )
-                display(Markdown('Download: ' + paths_text + f' · [Literature source]({{benchmark.source_url}})'))
+                display(Markdown('Local exports after execution · ' + paths_text + f' · [Literature source]({{benchmark.source_url}})'))
                 return paths
 
             def display_audit(title, *tables):
@@ -200,20 +207,27 @@ def build(name, title, description, reference):
                 )
                 display(HTML(f'<details><summary>{{escape(title)}}</summary>{{tables_html}}</details>'))
 
-            reference = replicate(name, data)
-            report = check_replication(name, reference)
-            additional = None
-            paper_uncertainty = None
-            if name == 'california':
-                additional = {{'SC': SyntheticDID().fit_sc(panel), 'DID': DifferenceInDifferences().fit(panel)}}
-                paper_uncertainty = california_paper_inference(panel, reference)
-                se_reference = paper_uncertainty.metadata['paper_replication']['reference_standard_error']
-                np.testing.assert_allclose(paper_uncertainty.standard_error, se_reference, atol=1e-9, rtol=0)
-                assert abs(additional['SC'].att - (-19.6)) <= 0.05
-                assert abs(additional['DID'].att - (-27.3)) <= 0.05
-                report.update({{'SE estimate': paper_uncertainty.standard_error,
-                               'SE reference': se_reference, 'SE absolute tolerance': 1e-9}})
+            def display_warnings(section, records):
+                if records:
+                    counts = Counter((w.category.__name__, str(w.message)) for w in records)
+                    rows = [(kind, message, count) for (kind, message), count in counts.items()]
+                    display_audit(f'{{section}} warnings ({{len(records)}} emitted)',
+                                  pd.DataFrame(rows, columns=['Category', 'Message', 'Count']))
 
+            with warnings.catch_warnings(record=True) as reference_warnings:
+                reference = replicate(name, data)
+                report = check_replication(name, reference)
+                additional = None
+                paper_uncertainty = None
+                if name == 'california':
+                    additional = {{'SC': SyntheticDID().fit_sc(panel), 'DID': DifferenceInDifferences().fit(panel)}}
+                    paper_uncertainty = california_paper_inference(panel, reference)
+                    se_reference = paper_uncertainty.metadata['paper_replication']['reference_standard_error']
+                    np.testing.assert_allclose(paper_uncertainty.standard_error, se_reference, atol=1e-9, rtol=0)
+                    assert abs(additional['SC'].att - (-19.6)) <= 0.05
+                    assert abs(additional['DID'].att - (-27.3)) <= 0.05
+                    report.update({{'SE estimate': paper_uncertainty.standard_error,
+                                   'SE reference': se_reference, 'SE absolute tolerance': 1e-9}})
             def matched_references(fit, additional=None):
                 refs = reference_comparisons(name, fit, additional=additional)
                 if paper_uncertainty is not None:
@@ -239,6 +253,7 @@ def build(name, title, description, reference):
             )
             plt.show()
             reference_files = export_figure(ax.figure, 'reference')
+            display_warnings('Historical fit and paper inference', reference_warnings)
             display_audit('Reference values and numerical replication checks',
                           reference_table, pd.Series(report, name='Replication check'))
         """),
@@ -303,10 +318,11 @@ def build(name, title, description, reference):
                 'Differenced SCM': SCM('diffsynth'),
             }
             results, elapsed = {}, {}
-            for label, model in models.items():
-                started = time.perf_counter()
-                results[label] = model.fit(panel)
-                elapsed[label] = time.perf_counter() - started
+            with warnings.catch_warnings(record=True) as comparison_warnings:
+                for label, model in models.items():
+                    started = time.perf_counter()
+                    results[label] = model.fit(panel)
+                    elapsed[label] = time.perf_counter() - started
             print(f'Fitted {len(results)} estimators on the common panel.')
             comparison = compare(results)
             comparison['elapsed_seconds'] = pd.Series(elapsed)
@@ -349,6 +365,7 @@ def build(name, title, description, reference):
             comparison.to_csv(figure_dir / f'{name}-estimates.csv', float_format='%.12g')
             plt.show()
             comparison_files = export_figure(fig, 'comparison')
+            display_warnings('Estimator comparison', comparison_warnings)
             display_audit('Estimator estimates, pretreatment fit and elapsed times', comparison.round(4))
         """),
         markdown("""
@@ -408,10 +425,11 @@ def build(name, title, description, reference):
             }
             validation_start = max(panel.n_pre // 2, initial + horizon)
             validation_horizon = max(1, (panel.n_pre - validation_start) // 3)
-            selection = select_estimator(
-                panel, candidates, initial_window=validation_start,
-                horizon=validation_horizon,
-            )
+            with warnings.catch_warnings(record=True) as validation_warnings:
+                selection = select_estimator(
+                    panel, candidates, initial_window=validation_start,
+                    horizon=validation_horizon,
+                )
             validation = selection.validation
             validation.summary.to_csv(figure_dir / f'{name}-validation-summary.csv')
             validation.scores.to_csv(figure_dir / f'{name}-validation-folds.csv', index=False)
@@ -422,6 +440,7 @@ def build(name, title, description, reference):
             )
             plt.show()
             validation_files = export_figure(fig, 'validation')
+            display_warnings('Pretreatment validation', validation_warnings)
             display_audit(
                 'Validation scores, fold definitions and selected fit',
                 validation.summary,
@@ -453,20 +472,22 @@ def build(name, title, description, reference):
         """,
             )
         ),
-        code("""
-            sensitivity = donor_sensitivity(panel, {
-                'Outcome SCM': SyntheticControl,
-                '2SISC k=10': partial(TwoStageIndividualSC, n_neighbors=10),
-                'SDID': SyntheticDID,
-            })
-            sensitivity.table.to_csv(figure_dir / f'{name}-donor-sensitivity.csv', index=False)
-            sensitivity.summary.to_csv(figure_dir / f'{name}-donor-sensitivity-summary.csv')
+        code(f"""
+            with warnings.catch_warnings(record=True) as sensitivity_warnings:
+                sensitivity = donor_sensitivity(panel, {{
+                    'Outcome SCM': SyntheticControl,
+                    '2SISC k=10': partial(TwoStageIndividualSC, n_neighbors=10),
+                    'SDID': SyntheticDID,
+                }})
+            sensitivity.table.to_csv(figure_dir / f'{{name}}-donor-sensitivity.csv', index=False)
+            sensitivity.summary.to_csv(figure_dir / f'{{name}}-donor-sensitivity-summary.csv')
             fig, axes = plot_donor_sensitivity(
                 sensitivity, title=figure_details['case'] + ' · donor sensitivity',
-                units=figure_details['units'],
+                units=figure_details['units'],{donor_display_names}
             )
             plt.show()
             sensitivity_files = export_figure(fig, 'donor-sensitivity')
+            display_warnings('Donor exclusions', sensitivity_warnings)
             display_audit('Donor sensitivity summary', sensitivity.summary)
         """),
         markdown("""
@@ -496,20 +517,21 @@ def build(name, title, description, reference):
             warnings remain visible; an unresolved extended fit stops the notebook.
         """),
         code("""
-            if paper_uncertainty is not None:
-                np.testing.assert_allclose(results['Synthetic DID'].att, reference.att, atol=1e-12)
-                reference_uncertainty = paper_uncertainty
-            else:
-                reference_uncertainty = SyntheticDID().inference(
-                    panel, method='placebo', replications=200, random_state=0,
+            with warnings.catch_warnings(record=True) as inference_warnings:
+                if paper_uncertainty is not None:
+                    np.testing.assert_allclose(results['Synthetic DID'].att, reference.att, atol=1e-12)
+                    reference_uncertainty = paper_uncertainty
+                else:
+                    reference_uncertainty = SyntheticDID().inference(
+                        panel, method='placebo', replications=200, random_state=0,
+                        estimate=results['Synthetic DID'],
+                    )
+                uncertainty = SyntheticDID().inference(
+                    panel, method='placebo', replications=200,
                     estimate=results['Synthetic DID'],
+                    resamples=reference_uncertainty.resamples,
+                    max_iter=1_000_000, require_convergence=True,
                 )
-            uncertainty = SyntheticDID().inference(
-                panel, method='placebo', replications=200,
-                estimate=results['Synthetic DID'],
-                resamples=reference_uncertainty.resamples,
-                max_iter=1_000_000, require_convergence=True,
-            )
             np.testing.assert_array_equal(uncertainty.resamples, reference_uncertainty.resamples)
             assert uncertainty.metadata['capped_draws'] == 0
             budget_comparison = pd.DataFrame([
@@ -523,7 +545,12 @@ def build(name, title, description, reference):
                 }
                 for label, fit in [('Reference cap', reference_uncertainty), ('Extended cap', uncertainty)]
             ]).set_index('Run')
+            capped = reference_uncertainty.metadata['capped_draws']
+            if capped:
+                print(f'Original SDID iteration cap reached in {capped} of '
+                      f'{len(reference_uncertainty.draws)} draws before the stopping rule.')
             display(budget_comparison)
+            display_warnings('SDID inference', inference_warnings)
             budget_comparison.to_csv(figure_dir / f'{name}-sdid-budget-comparison.csv')
             convergence = pd.concat({
                 label: pd.json_normalize(fit.metadata['solver_diagnostics'])
