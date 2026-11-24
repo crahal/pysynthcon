@@ -7,6 +7,7 @@ matplotlib==3.9.4
 pysyncon @ https://github.com/sdfordham/pysyncon/archive/b77dc20e29b012ab03ca1d4caeef7b41861e86f5.zip
 SyntheticControlMethods==1.1.17
 cvxpy==1.6.7
+clarabel==0.11.1
 requests==2.32.5
 nbformat==5.10.4
 nbclient==0.10.2

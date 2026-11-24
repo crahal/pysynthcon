@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ._nested import StableNestedOptimizer
 from .panel import Panel
 from .results import Estimate, make_estimate
 
@@ -79,8 +80,6 @@ class PySyncon:
                 if self.method in {"synth", "pensynth"}
                 else None,
             )
-            if self.method in {"synth", "pensynth"}:
-                options.setdefault("custom_V", np.ones(panel.n_pre))
             order = np.arange(panel.n_control)
         else:
             dp = self.dataprep
@@ -117,9 +116,10 @@ class SCM:
 
     ``method`` is ``synth`` or ``diffsynth``. Pre-period outcomes enter as
     repeated, precomputed lag predictors. ``n_lags=None`` uses every pre-period;
-    an integer uses at most that many evenly spaced pre-periods. One optimisation start
-    avoids the release's malformed random-start shape on modern SciPy. The
-    DiffSynth subclass fixes pandas 2 groupby-index alignment and computes
+    an integer explicitly restricts the predictor specification. All ten upstream
+    optimization starts are used by default. Failed gradient line searches are
+    recovered with a bounded derivative-free solve of the same nested objective.
+    The DiffSynth subclass fixes pandas 2 groupby-index alignment and computes
     differences within units; no installed package or global state is changed.
     Both subclasses also correct predictor-axis scaling and target-array
     broadcasting in the released package's inner objective.
@@ -130,6 +130,8 @@ class SCM:
     pen: float = 0.0
     random_state: int = 0
     n_lags: int | None = None
+    n_optim: int = 10
+    max_iter: int = 10000
 
     def fit(self, panel: Panel) -> Estimate:
         """Fit the upstream model on a canonical integer-indexed panel."""
@@ -140,6 +142,10 @@ class SCM:
             raise ValueError("SCM requires exactly one treated unit")
         if not np.isfinite(self.pen) or self.pen < 0:
             raise ValueError("pen must be finite and nonnegative")
+        for name in ("n_optim", "max_iter"):
+            value = getattr(self, name)
+            if not isinstance(value, (int, np.integer)) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
         if self.n_lags is not None and (
             not isinstance(self.n_lags, (int, np.integer)) or self.n_lags < 1
         ):
@@ -177,10 +183,12 @@ class SCM:
                 prepared["treated_covariates"] = prepared["treated_covariates"].T
                 return prepared
 
-        class CompatibleSynth(CovariateShapeMixin, upstream.Synth):
-            pass
+        class CompatibleSynth(StableNestedOptimizer, CovariateShapeMixin, upstream.Synth):
+            outer_max_iter = self.max_iter
 
-        class CompatibleDiffSynth(CovariateShapeMixin, upstream.DiffSynth):
+        class CompatibleDiffSynth(StableNestedOptimizer, CovariateShapeMixin, upstream.DiffSynth):
+            outer_max_iter = self.max_iter
+
             def difference_data(self, dataset, not_diff_cols):
                 transformed = dataset.copy()
                 transformed["outcome"] = transformed.groupby("unit", sort=False).outcome.diff()
@@ -195,7 +203,7 @@ class SCM:
             "time",
             panel.n_pre,
             f"unit_{panel.n_control:08d}",
-            n_optim=1,
+            n_optim=self.n_optim,
             pen=self.pen,
             random_seed=self.random_state,
         )
@@ -210,7 +218,8 @@ class SCM:
             offset,
             metadata={
                 "backend_version": version("SyntheticControlMethods"),
-                "n_optim": 1,
+                "n_optim": self.n_optim,
+                "optimization": model.optimization_diagnostics_,
                 "predictor_shape_fix": True,
                 "predictor_scaling_fix": True,
                 "lag_periods": lag_times.tolist(),

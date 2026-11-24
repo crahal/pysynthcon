@@ -23,8 +23,10 @@ robust = PySyncon("robust", options={"lambda_": 0.1, "sv_count": 3}).fit(panel)
 ```
 
 Without a custom Dataprep, synth and pensynth use individual pre-outcomes as
-predictors with equal V importance **after upstream row standardization**.
-That differs from native equal-outcome-period SCM. AugSynth uses the
+predictors. Classical SCM estimates V with the full upstream nested
+optimization; it no longer injects a fixed V. PenalizedSynth uses the original
+method's identity metric unless the caller explicitly supplies another metric.
+AugSynth uses the
 no-covariate Ridge specification, with its upstream cross-validation.
 RobustSynth requires explicit ridge and singular-value truncation choices;
 it uses all donor periods for its denoising step. Results preserve the
@@ -58,7 +60,8 @@ Version 1.1.17 needs local compatibility handling with modern pandas/SciPy:
   unit. The adapter standardizes each predictor across units, preserving the
   convex-combination relationship and the intended predictor-variance scaling.
 - Its random optimization restarts produce a two-dimensional initialization
-  where SciPy requires a vector. The adapter uses one deterministic start.
+  where SciPy requires a vector. The adapter flattens the Dirichlet samples
+  and restores all **ten** original starts, with a reproducible random seed.
 - Its DiffSynth groupby assignment can misalign pandas indices. A small local
   subclass computes outcome differences within units and drops each unit's
   first period. Lag predictors remain fixed, so their meaning is explicit.
@@ -67,8 +70,9 @@ Version 1.1.17 needs local compatibility handling with modern pandas/SciPy:
 
 The adapter constructs fixed pre-outcome lag predictors plus upstream's
 outcome-mean predictor. `n_lags=None` uses every pre-period, while an integer
-chooses at most that many evenly spaced lags. The notebooks set `n_lags=10`
-explicitly so the nested optimization remains practical on quarterly data.
+chooses at most that many evenly spaced lags as an explicit alternative
+predictor specification. The notebooks use **every** pretreatment lag and
+**ten** optimization starts, including all 89 Kansas pretreatment quarters.
 It does not monkey-patch global functions or modify
 the installed package. Differenced SCM applies the upstream mean pre-gap
 level correction. These choices are recorded in metadata, and tests compare
@@ -79,9 +83,47 @@ the adapter deliberately does not reproduce the uncorrected release's two
 predictor-array bugs. Use the exposed backend object for inspection, not its
 untested upstream placebo routines, whose shape conventions can differ.
 
-The single initialization can be a local solution in nested optimization.
-Inspect fit quality and use sensitivity analysis; it is not a claim of global
-optimality. Constant or degenerate predictor designs can also make upstream
-normalization undefined. Native methods provide clearer handling of many
-degenerate cases; upstream failures are surfaced rather than replaced with a
-different estimator.
+### Line-search failure recovery
+
+The previous adapter inherited unchecked `ABNORMAL_TERMINATION_IN_LNSRCH`
+exits from upstream L-BFGS-B. A nested objective can change active donor sets;
+finite differences of an approximate inner solve need not provide a reliable
+line-search direction. Hiding the printed message does not solve that problem.
+
+The local optimizer retains the statistical objective, bounds, uniform first
+start, and seeded Dirichlet restarts. It solves the inner constrained quadratic
+program with explicit tight CLARABEL tolerances. Writing the residual as
+`(X - target) @ w` on `sum(w)=1` avoids subtraction of large levels without
+changing the objective. The outer loss is divided by a constant for numerical
+conditioning.
+
+The outer L-BFGS-B gradient is calculated by differentiating the inner
+quadratic program's Karush–Kuhn–Tucker (KKT) equations. An active-set
+polishing step removes spurious tiny interior-point weights, checks dual
+feasibility, and adds any donors with violated reduced-gradient conditions.
+An adjoint linear solve then computes derivatives with respect to **every**
+predictor weight. This is an analytic derivative of the same objective, not
+a replacement estimator, omitted predictor or reduced number of starts.
+It avoids subtracting nearly equal, approximate QP solutions in finite
+differences; this was especially costly for all 89 Kansas pretreatment lags.
+
+Singular KKT systems, nondifferentiable active-set boundaries, or a failed
+outer line search trigger bounded Powell optimization of the **same** full
+objective without a gradient. The original convex QP solution remains
+available when a derivative cannot be certified. Failure of both outer
+solvers raises an exception. An unrecovered solver failure is never silently
+accepted.
+
+Each start's solver, termination message, evaluation count, and initial/final
+loss is saved in `result.metadata['optimization']`. The best evaluated feasible
+weights across all starts are retained, as in upstream. Reusing the compiled
+quadratic problem changes neither its data nor its solution; it does not remove
+predictors, starts, or optimization stages. Tests compare the implicit gradient
+with central differences of an independently derived two-donor solution,
+including a nonzero penalty. They also check recovery for duplicate donors,
+failed line searches, and an independently known convex-mixture solution.
+
+These are explicit numerical and compatibility corrections to release 1.1.17,
+not a claim of byte-identical results from its buggy unmodified code. Nested
+optimization remains nonconvex: ten successful starts do not prove global
+optimality. Review fit and sensitivity for substantive applications.
