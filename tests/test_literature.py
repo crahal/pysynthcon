@@ -83,6 +83,8 @@ def test_basque_paper_percentage_is_separate_from_original_r_att():
     assert table.reference.tolist() == [-10, -0.6995627075801111]
     expected = (-100 / fit.observed.loc[1980:1997]).mean()
     assert table.loc[0, "reproduced"] == pytest.approx(expected)
+    assert pd.isna(table.loc[0, "difference"]) and pd.isna(table.loc[0, "difference_units"])
+    assert not comparisons[0].comparable and comparisons[1].comparable
     assert table.loc[1, "reproduced"] == -1
     assert "Costs%20of%20Conflict.pdf#page=4" in table.loc[1, "source_url"]
 
@@ -116,3 +118,27 @@ def test_kansas_uses_author_vignette_not_a_paper_printed_headline():
     assert comparison.window_label == "2012 Q2–2016 Q1"
     assert comparison.reference_precision == 4
     assert "7e70072232fe75057aa8b5d7af08c7e1aef53ae8" in comparison.source_url
+
+
+@pytest.mark.parametrize("alteration", ["shifted", "missing", "nonfinite", "boundary"])
+def test_matching_california_att_requires_complete_original_sample(alteration):
+    times = np.arange(1970, 2001)
+    if alteration == "shifted":
+        times += 1
+    elif alteration == "missing":
+        times = np.delete(times, 24)
+    fit = reference_fit(
+        pd.Index(times), 18 if alteration == "boundary" else 19, -15.603827872733849
+    )
+    if alteration == "nonfinite":
+        fit.counterfactual.iloc[-1] = np.nan
+    error = ValueError if alteration == "nonfinite" else AssertionError
+    message = "finite" if alteration == "nonfinite" else "complete historical outcome window"
+    with pytest.raises(error, match=message):
+        check_replication("california", fit)
+
+
+def test_correct_mean_does_not_mask_wrong_kansas_quarterly_effects():
+    fit = reference_fit(pd.Index(np.arange(1990, 2016.25, 0.25)), 89, -0.0401)
+    with pytest.raises(AssertionError, match="Kansas post-treatment effects"):
+        check_replication("kansas", fit)

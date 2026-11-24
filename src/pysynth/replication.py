@@ -201,12 +201,14 @@ def reference_comparisons(name, reference, *, additional=None):
                 label="Historical SCM",
                 reference=-10,
                 window=(1980, 1997),
-                units="% of observed GDP",
+                units="% of observed GDP (Fig. 2)",
+                source_label="Fig. 1 headline",
+                comparable=False,
                 statistic="mean_percent_effect",
                 approximate=True,
                 reference_precision=0,
                 precision=2,
-                context="Approximate 1980s–1990s headline; available years 1980–97. Mean of 100 × gap / observed GDP (Fig. 2 denominator).",
+                context="Figure 1 gives a visual summary for the 1980s–1990s. Our 1980–97 mean follows Figure 2’s observed-GDP denominator. The paper does not specify an exact averaging formula for the headline.",
                 **common,
             ),
             ReferenceComparison(
@@ -361,6 +363,23 @@ def check_replication(name, result):
     parity tolerance, not tuned after observing this implementation's result.
     A failure raises AssertionError and must be investigated.
     """
+    # A matching scalar cannot establish a replication if its averaging
+    # sample differs. Pandas also skips missing observations in mean().
+    calendars = {
+        "california": np.arange(1970, 2001),
+        "basque": np.arange(1960, 1998),
+        "germany": np.arange(1960, 2004),
+        "kansas": np.arange(1990, 2016.25, 0.25),
+    }
+    if name not in calendars:
+        raise ValueError(f"Unknown replication: {name}")
+    times = calendars[name]
+    if (
+        not np.array_equal(result.observed.index, times)
+        or not result.observed.index.equals(result.counterfactual.index)
+        or result.n_pre != np.searchsorted(times, DATASETS[name].treatment_time)
+    ):
+        raise AssertionError(f"{name} replication requires its complete historical outcome window")
     if name == "california":
         value, target, tolerance = result.att, -15.603827872733849, 1e-6
         kind = "R synthdid reference ATT (paper reports -15.6)"
@@ -377,16 +396,42 @@ def check_replication(name, result):
             "Cataluna": 0.8508,
             "Madrid (Comunidad De)": 0.1492,
         }.items():
-            if abs(result.weights[donor] - published_weight) > 1e-4:
+            if not np.isclose(
+                result.weights.get(donor, np.nan), published_weight, atol=1e-4, rtol=0
+            ):
                 raise AssertionError(f"Basque published donor weight failed: {donor}")
     elif name == "germany":
         value, target, tolerance = result.att, -1555.1346777620479, 0.025 * 1555.1346777620479
         kind = "pysyncon reference ATT, 1990–2003"
     elif name == "kansas":
-        value, target, tolerance = result.att, -0.0401, 0.001
+        value, target, tolerance = result.att, -0.0401, 0.00005
         kind = "R augsynth vignette ATT, log GDP per capita"
-    else:
-        raise ValueError(f"Unknown replication: {name}")
+        # The authors print the sixteen quarter-specific estimates to three
+        # decimals. Checking them catches offsetting errors hidden by the ATT.
+        np.testing.assert_allclose(
+            result.effects.iloc[result.n_pre :],
+            [
+                -0.022,
+                -0.047,
+                -0.043,
+                -0.030,
+                -0.041,
+                -0.059,
+                -0.045,
+                -0.058,
+                -0.055,
+                -0.041,
+                -0.029,
+                -0.040,
+                -0.030,
+                -0.033,
+                -0.029,
+                -0.038,
+            ],
+            rtol=0,
+            atol=0.0005,
+            err_msg="Kansas post-treatment effects differ from the authors' Ridge ASCM vignette",
+        )
     if not np.isfinite(value) or abs(value - target) > tolerance:
         raise AssertionError(
             f"{name} replication failed: {value} vs {target}, tolerance {tolerance}"

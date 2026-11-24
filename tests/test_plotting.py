@@ -587,3 +587,50 @@ def test_dense_historical_annotations_keep_separate_rows_and_use_empty_facet_spa
         assert bounds.x0 <= box.x0 < box.x1 <= bounds.x1
         assert bounds.y0 <= box.y0 < box.y1 <= bounds.y1
     assert "% of observed GDP" in annotations[0].get_text()
+
+
+def test_unpaired_benchmark_leaders_identify_the_source_guide():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    benchmark = literature(value=-20, window=(2004, 2010))
+    ax = plot_paths(fit, benchmark=benchmark)
+    assert ax.figure._pysynth_direct_annotations[-1].arrow_patch is None
+
+    fig, _ = plot_effects({"One": fit, "Two": fit}, benchmark=benchmark)
+    callouts = [a for a in fig._pysynth_direct_annotations if a.get_url()]
+    assert len(callouts) == 1
+    assert callouts[0].xy == (2007, -20)
+    fig, _ = plot_comparison({"One": fit, "Two": fit}, benchmark=benchmark)
+    assert fig._pysynth_direct_annotations[0].xy[0] == -20
+    fig, _ = plot_comparison({"One": fit}, benchmark=literature())
+    assert fig._pysynth_direct_annotations[0].arrow_patch is None
+
+
+def test_single_path_cites_only_sources_for_its_plotted_fit():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    reference = matched_reference(replace(fit), citation="Unplotted study")
+    ax = plot_paths(fit, references=[reference])
+    text = [t.get_text() for axis in ax.figure.axes for t in axis.texts]
+    assert all("Unplotted study" not in value and "fit − source" not in value for value in text)
+
+
+def test_extreme_source_percentage_and_level_means_are_finite():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    observed = pd.Series(1.7e308, index=fit.observed.index)
+    fit = replace(fit, observed=observed, counterfactual=0 * observed)
+    level = matched_reference(fit)
+    percentage = matched_reference(fit, statistic="mean_percent_effect")
+    assert level.reproduced == 1.7e308
+    assert percentage.reproduced == 100
+
+
+def test_descriptive_headline_is_unpaired_in_both_layouts():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    ref = matched_reference(fit, comparable=False, approximate=True, source_label="Paper headline")
+    direct, axes = plot_effects({"Model": fit}, references=[ref])
+    callout = direct._pysynth_direct_annotations[0]
+    assert "Paper headline" in callout.get_text() and "mean" in callout.get_text()
+    assert "Δ" not in callout.get_text()
+    assert not any(line.get_label().startswith("Paper headline:") for line in axes[0, 0].lines)
+    strip, _ = plot_comparison({"Model": fit}, references=[ref], reference_style="strip")
+    assert any(artist.get_text() == "—" for artist in strip._pysynth_reference_layout[0].texts)
+    assert ref.difference is None

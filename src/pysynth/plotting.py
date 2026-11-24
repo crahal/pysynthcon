@@ -14,7 +14,7 @@ from typing import Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from .results import Estimate, compare
+from .results import Estimate, _mean_effect, compare
 
 INK = "#243442"
 BLUE = "#286A8C"
@@ -68,7 +68,9 @@ class ReferenceComparison:
     hand. ``mean_percent_effect`` averages 100 * (observed - counterfactual) /
     observed; its difference is in percentage points. A rounded or approximate
     source number is descriptive, not an optimization target or a tolerance.
-    Only the identical Estimate object receives a numeric guide in a plot.
+    Set ``comparable=False`` for a qualitative headline that accompanies a
+    related calculation. Its difference is undefined. Only the identical
+    Estimate object receives a numeric guide for a comparable statistic.
     """
 
     label: str
@@ -85,6 +87,7 @@ class ReferenceComparison:
     approximate: bool = False
     source_label: str = "Published"
     window_label: str | None = None
+    comparable: bool = True
 
     def __post_init__(self):
         for name in ("label", "units", "citation", "source_url", "context", "source_label"):
@@ -103,6 +106,8 @@ class ReferenceComparison:
         for value in (self.precision, self.reference_precision):
             if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 8:
                 raise ValueError("precision must be an integer between 0 and 8")
+        if not isinstance(self.comparable, bool):
+            raise ValueError("comparable must be a boolean")
         self._positions()
 
     def _positions(self):
@@ -123,13 +128,22 @@ class ReferenceComparison:
             observed = self.estimate.observed.iloc[positions]
             if (observed == 0).any():
                 raise ValueError("percentage comparison requires nonzero observed outcomes")
-            values = 100 * values / observed
-        return float(values.mean())
+            # Preserve the calculation for ordinary data. At very large
+            # scales the numerator can overflow before division cancels it.
+            with np.errstate(over="ignore", invalid="ignore"):
+                percentage = 100 * values / observed
+                overflow = ~np.isfinite(percentage)
+                if overflow.any():
+                    percentage.loc[overflow] = (values[overflow] / observed[overflow]) * 100
+            if not np.isfinite(percentage).all():
+                raise ValueError("percentage comparison exceeds finite floating-point range")
+            values = percentage
+        return _mean_effect(values)
 
     @property
-    def difference(self) -> float:
-        """Reproduced minus source; source rounding remains in this difference."""
-        return self.reproduced - self.reference
+    def difference(self) -> float | None:
+        """Return reproduced minus source when both values represent the same statistic."""
+        return self.reproduced - self.reference if self.comparable else None
 
 
 def reference_comparison_table(references: Sequence[ReferenceComparison]) -> pd.DataFrame:
@@ -144,9 +158,11 @@ def reference_comparison_table(references: Sequence[ReferenceComparison]) -> pd.
                 "reproduced": ref.reproduced,
                 "difference": ref.difference,
                 "units": ref.units,
-                "difference_units": "percentage points"
-                if ref.statistic == "mean_percent_effect"
-                else ref.units,
+                "difference_units": (
+                    ("percentage points" if ref.statistic == "mean_percent_effect" else ref.units)
+                    if ref.comparable
+                    else None
+                ),
                 "window_start": ref.window[0],
                 "window_end": ref.window[1],
                 "statistic": ref.statistic,
@@ -198,6 +214,7 @@ def _matched_references(references, estimate, *, full_window=False):
         ref
         for ref in references
         if ref.estimate is estimate
+        and ref.comparable
         and ref.statistic == "mean_effect"
         and (
             not full_window
@@ -251,11 +268,11 @@ def _direct_note(note, references, benchmark):
     """Short citations; links live on callouts and full details stay in the table."""
     sources = _source_numbers(references)
     lines = [note] if note else []
-    if references:
+    if any(ref.comparable for ref in references):
         lines.append("Δ = fit − source; source rounding retained.")
     lines.extend(f"[{number}] {citation}" for (citation, _), number in sources.items())
     if benchmark is not None:
-        lines.append(benchmark.citation)
+        lines.append(f"[1] {benchmark.citation} · {benchmark.context}")
     return "\n".join(lines) or None
 
 
@@ -271,8 +288,10 @@ def _reference_text(ref, number, *, compact=False):
     delta_unit = " pp" if unit else ""
     reported = prefix + _reference_number(ref.reference, ref.reference_precision) + unit
     reproduced = _reference_number(ref.reproduced, ref.precision) + unit
-    difference = prefix + _reference_number(ref.difference, ref.precision, signed=True) + delta_unit
     window = ref.window_label or f"{ref.window[0]}–{ref.window[1]}"
+    if not ref.comparable:
+        return f"{source} {reported} [{number}]\n{window} mean {reproduced}\n{ref.units}"
+    difference = prefix + _reference_number(ref.difference, ref.precision, signed=True) + delta_unit
     if compact:
         return f"{source} {reported} · Δ {difference} [{number}]"
     scale = f"\n{ref.units}" if unit else ""
@@ -289,13 +308,13 @@ def _reference_spacing(ref):
 
 
 def _callout(ax, text, xy, *, width=36, fontsize=7.3, color=LITERATURE, url=None):
-    """A data-anchored callout, positioned in available space at export time."""
+    """Place a callout in open space. Only point to data for a numeric target."""
     original = text
     text = "\n".join(fill(line, width=width) for line in text.splitlines())
     artist = ax.annotate(
         text,
-        xy=xy,
-        xycoords="data",
+        xy=(0.5, 0.5) if xy is None else xy,
+        xycoords="axes fraction" if xy is None else "data",
         xytext=(0.03, 0.96),
         textcoords="axes fraction",
         ha="left",
@@ -309,7 +328,9 @@ def _callout(ax, text, xy, *, width=36, fontsize=7.3, color=LITERATURE, url=None
             "edgecolor": "none",
             "alpha": 0.94,
         },
-        arrowprops={"arrowstyle": "-", "color": color, "linewidth": 0.6, "relpos": (0.5, 0.5)},
+        arrowprops={"arrowstyle": "-", "color": color, "linewidth": 0.6, "relpos": (0.5, 0.5)}
+        if xy is not None
+        else None,
         annotation_clip=False,
         zorder=6,
     )
@@ -357,7 +378,7 @@ def _annotate_references(ax, x, references, estimate, *, effects=False, small=Fa
             if effects
             else (estimate.observed.iloc[middle] + estimate.counterfactual.iloc[middle]) / 2
         )
-        if effects and ref.statistic == "mean_effect":
+        if effects and ref.comparable and ref.statistic == "mean_effect":
             target = ref.reference
         _callout(
             ax,
@@ -446,7 +467,9 @@ def _layout_annotations(fig):
                 & (points[:, 1] >= box.y0)
                 & (points[:, 1] <= box.y1)
             )
-            target = ax.transData.transform(artist.xy)
+            target = (ax.transData if artist.arrow_patch is not None else ax.transAxes).transform(
+                artist.xy
+            )
             distance = np.linalg.norm(
                 target - np.array([(box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2])
             )
@@ -894,7 +917,9 @@ def _reference_strip(fig, cell, references):
             _reference_number(ref.reproduced, ref.precision),
             prefix
             + _reference_number(ref.difference, ref.precision, signed=True)
-            + (" pp" if ref.statistic == "mean_percent_effect" else ""),
+            + (" pp" if ref.statistic == "mean_percent_effect" else "")
+            if ref.comparable
+            else "—",
         ]
         value_artists = [
             text(x, value, size=9, align="right", color=color, weight="semibold")
@@ -1073,6 +1098,8 @@ def plot_paths(
         raise ValueError(
             "subtitle, note and references/benchmark require ax=None; add captions to your parent figure"
         )
+    if reference_style == "direct":
+        references = tuple(ref for ref in references if ref.estimate is estimate)
     with publication_style():
         own_figure = ax is None
         if ax is None:
@@ -1143,8 +1170,10 @@ def plot_paths(
             if benchmark is not None:
                 _callout(
                     ax,
-                    f"{benchmark.label}: {benchmark.headline}",
-                    (x[-1], estimate.effects.iloc[-1] if effects else estimate.observed.iloc[-1]),
+                    f"{benchmark.label}: {benchmark.headline} [1]",
+                    ((x[estimate.n_pre] + x[-1]) / 2, benchmark.value)
+                    if effects and benchmark.value is not None
+                    else None,
                     url=benchmark.source_url,
                 )
         if intervention_label is not None:
@@ -1308,11 +1337,13 @@ def plot_effects(
                     small=True,
                     color=(colors or {}).get(name, BLUE),
                 )
-                if benchmark is not None:
+                if benchmark is not None and position == 0:
                     _callout(
                         ax,
-                        f"{benchmark.label}: {benchmark.headline}",
-                        (x[-1], result.effects.iloc[-1]),
+                        f"{benchmark.label}: {benchmark.headline} [1]",
+                        ((x[result.n_pre] + x[-1]) / 2, benchmark.value)
+                        if benchmark.value is not None
+                        else None,
                         width=27,
                         fontsize=6.8,
                         url=benchmark.source_url,
@@ -1516,8 +1547,10 @@ def plot_comparison(
                 if benchmark is not None:
                     _callout(
                         ax,
-                        f"{benchmark.label}: {benchmark.headline}",
-                        (table.att.iloc[0], y[0]),
+                        f"{benchmark.label}: {benchmark.headline} [1]",
+                        (benchmark.value, (y[0] + y[-1]) / 2)
+                        if benchmark.value is not None
+                        else None,
                         width=30,
                         fontsize=7,
                         url=benchmark.source_url,

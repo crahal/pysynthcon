@@ -222,7 +222,10 @@ For percentage comparisons, `statistic="mean_percent_effect"` computes
 the mean of `100 * (observed - counterfactual) / observed`; its difference is
 reported in percentage points. The denominator is the observed outcome,
 and averaging occurs **after** division. This statistic is used for the
-Basque paper's Figure 2 convention. It appears as a textual comparison when
+Basque paper's Figure 2 convention. Figure 1 gives an approximate visual
+summary without defining an average. For this case `comparable=False` shows
+the headline alongside our Figure 2 calculation and leaves the difference
+empty in the audit table and CSV. The percentage appears as text when
 the main figure uses dollar units; no percentage guide is drawn on those
 axes. Zero observed denominators raise an error.
 
@@ -243,7 +246,9 @@ them as CSV.
 The earlier `LiteratureBenchmark` interface remains available for descriptive
 context without a paired reproduction. Pass it to any of the three plotting
 functions. By default its headline appears in a callout inside the chart,
-with a numbered citation in the footer and a source link on the callout. Use `reference_style="strip"` for the
+with its citation and specification context in the footer. A numeric callout
+points to its source guide on effect and ATT axes. A text-only callout has
+no leader. The source link is attached to the callout. Use `reference_style="strip"` for the
 earlier warm-toned source strip with its full specification context. Prefer
 `ReferenceComparison` when a source result belongs to one exact fitted
 specification.
@@ -300,9 +305,12 @@ effect-panel figure, a validation figure and a donor-sensitivity figure,
 plus comparison and source-check values as CSV under
 `empirical_examples/figures/<example>/`. These generated files stay local and
 are excluded from version control and source distributions. The committed
-notebooks embed all five figures, with download and source links immediately
+notebooks embed all five figures, with local export paths and literature links immediately
 after each figure. Full setup notes, specification details and audit tables
-can be expanded without putting long text blocks above the charts. Rerun
+can be expanded below the charts. The notebooks also group emitted fit
+warnings by category and message and report their counts below the relevant
+figure. The inference section prints the number of original-cap SDID draws
+that stopped at the limit. Rerun
 the notebooks to create PDF, SVG and PNG files. Historical reference fits
 remain explicitly labelled when shown alongside common-comparison methods.
 
