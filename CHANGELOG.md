@@ -5,6 +5,29 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Audit corrections
+
+- Correct Basque eligibility to 16 regional donors and reproduce paper Table 3
+  using mean annual education shares. Add independent original-R Synth checks
+  of predictors, weights and the full path at absolute tolerance `1e-4`.
+- Restore original SCUL near-zero-variance screening across full series and
+  every training fold; allow one-origin median/minimum selection.
+- Preserve SCM predictions across measurement-unit and common-level changes;
+  retain informative lags regardless of absolute outcome scale.
+- Check pysyncon inner/outer termination and recover failed solves without
+  changing objectives. Reject silent post-treatment predictor use and mismatched
+  outcome data; record Germany’s explicit historical exception.
+- Correct robust SCM handling of genuine zeros, singular-value thresholds and
+  denoised prediction; validate against the published SVD/ridge equations.
+- Make RMSPE and generic placebo ranks scale invariant; validate supplied SDID
+  time-weight alignment and simplex weights. Clarify the descriptive placebo
+  rank and the original SDID paper/software finite-sample differences.
+- Fix invalid local diagnostic JSON, validate generated notebook code, and
+  clean up notebook kernels after success or failure. Regenerate empirical
+  comparisons after the audit. R and auxiliary exports
+  remain local-only; source distributions explicitly exclude restored ignored
+  helpers and executed notebook copies. See `docs/audit.md` for sources, evidence and limits.
+
 ### Added
 
 - Original synthdid bootstrap, jackknife and placebo variance procedures,

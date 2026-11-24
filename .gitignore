@@ -173,6 +173,7 @@ activemq-data/
 *.RData
 *.rdata
 *.rds
+*.rda
 .Rhistory
 .Rproj.user/
 *.executed.ipynb

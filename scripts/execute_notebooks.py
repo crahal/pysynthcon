@@ -49,7 +49,9 @@ def main():
         client = NotebookClient(
             nb, timeout=args.timeout, km=manager, resources={"metadata": {"path": str(root)}}
         )
-        client.execute()
+        # An explicitly supplied manager is considered externally owned by
+        # nbclient. Request its finally cleanup on both success and failure.
+        client.execute(cleanup_kc=True)
         destination = path if args.output_dir is None else args.output_dir / path.name
         destination.parent.mkdir(parents=True, exist_ok=True)
         nbformat.write(nb, destination)

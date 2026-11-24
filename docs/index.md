@@ -15,6 +15,7 @@ plotting
 backends
 reference_backends
 replication
+audit
 api
 references
 development

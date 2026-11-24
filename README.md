@@ -185,6 +185,7 @@ identify the post-period.
 - [Publication plotting and export](docs/plotting.md)
 - [Backend compatibility](docs/backends.md)
 - [Replication provenance](docs/replication.md)
+- [Estimator audit, corrections and remaining limits](docs/audit.md)
 - [API reference source](docs/api.rst)
 - [Contributor guide](CONTRIBUTING.md), [changelog](CHANGELOG.md), [citations](docs/references.md)
 

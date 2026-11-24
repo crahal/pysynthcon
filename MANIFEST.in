@@ -6,7 +6,10 @@ recursive-include empirical_examples *.ipynb
 prune empirical_examples/figures
 prune empirical_examples/baselines
 recursive-include scripts *.py
+exclude scripts/install_r_references.py scripts/validate_r.py scripts/validate_sdid_inference.py
+exclude scripts/r-reference-lock.json
 recursive-include tests *.py *.json
 prune .local
-global-exclude *.R *.r
+prune src/pysynth/_reference
+global-exclude *.R *.r *.RData *.rdata *.rds *.rda *.executed.ipynb
 global-exclude __pycache__ *.py[cod]
