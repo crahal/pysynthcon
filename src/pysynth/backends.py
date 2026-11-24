@@ -363,6 +363,8 @@ class _PredictorBackend:
     ):
         """Fit a checked predictor specification with an optional external implementation."""
         self.backend_ = None
+        if not isinstance(allow_post_predictors, (bool, np.bool_)):
+            raise ValueError("allow_post_predictors must be a boolean")
         upstream = _require("pysyncon")
         classes = {
             "synth": upstream.Synth,

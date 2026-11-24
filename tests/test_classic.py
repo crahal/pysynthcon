@@ -56,7 +56,40 @@ def test_convex_gap_bounds_objective_error_independently_of_success(monkeypatch)
         lambda *args, **kwargs: OptimizeResult(x=np.array([0.5, 0.5]), success=True, nit=0),
     )
     panel = Panel(np.tile([0.0, 2.0, 0.4], (5, 1)), 2, 4)
-    fit = SyntheticControl().fit(panel)
+    # A deliberately loose tolerance allows a measurable improvement at this
+    # starting point. The dual-gap diagnostic must still bound the loss.
+    fit = SyntheticControl(tol=0.5).fit(panel)
     # The exact optimum has zero error at weights (.8, .2).
     assert 0 < fit.metadata["objective"] <= fit.metadata["optimality_gap"]
     assert fit.metadata["optimality_gap"] == pytest.approx(1.2)
+
+
+@pytest.mark.parametrize("scale", [1e-8, 1, 1e8])
+def test_distant_inactive_donor_cannot_mask_exact_active_face_fit(scale):
+    # The second row forces weight zero on C; the first then fixes B at 0.9.
+    panel = Panel(np.array([[0, 1, 0, 0.9], [0, 0, 1_000, 0], [0, 20, 0, 18]]) * scale, 3, 2)
+    fit = SyntheticControl().fit(panel)
+    np.testing.assert_allclose(fit.weights, [0.1, 0.9, 0], atol=1e-10)
+    assert fit.pre_rmse / scale < 1e-10
+    assert abs(fit.att / scale) < 1e-10
+
+
+def test_ridge_refinement_preserves_the_penalized_simplex_optimum():
+    panel = Panel(np.array([[0, 1, 0, 0.9], [0, 0, 1_000, 0], [0, 20, 0, 18]]), 3, 2)
+    fit = SyntheticControl(ridge=0.25).fit(panel)
+    # Eliminate w_A from the equality constraint and solve the two first-order
+    # equations. Both fitted coordinates are interior for this positive ridge.
+    b, c = np.linalg.solve([[2, 0.5], [0.5, 1_000_001]], [1.4, 0.5])
+    np.testing.assert_allclose(fit.weights, [1 - b - c, b, c], atol=1e-7)
+
+
+def test_budget_exhaustion_reports_the_remaining_improvement(monkeypatch):
+    from scipy.optimize import OptimizeResult
+
+    monkeypatch.setattr(
+        "pysynth._optim.minimize",
+        lambda *args, **kwargs: OptimizeResult(x=np.array([0.5, 0.5]), success=True, nit=1),
+    )
+    panel = Panel(np.tile([0.0, 2.0, 0.4], (5, 1)), 2, 4)
+    with pytest.raises(RuntimeError, match="max_iter.*improving donor transfer"):
+        SyntheticControl(max_iter=1).fit(panel)

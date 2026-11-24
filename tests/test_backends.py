@@ -152,6 +152,13 @@ def test_custom_dataprep_rejects_post_predictor_leakage(panel, special):
         PySyncon(dataprep=dp).fit(panel)
 
 
+@pytest.mark.parametrize("value", ["False", "True", 1, None])
+def test_post_treatment_predictors_require_boolean_permission(panel, value):
+    dp = _dataprep(panel, predictor_periods=[panel.times[panel.n_pre]])
+    with pytest.raises(ValueError, match="allow_post_predictors must be a boolean"):
+        PySyncon(dataprep=dp, allow_post_predictors=value).fit(panel)
+
+
 def test_historical_post_predictors_require_explicit_recorded_opt_in(panel):
     period = panel.times[panel.n_pre]
     dp = _dataprep(panel, predictor_periods=[period])
