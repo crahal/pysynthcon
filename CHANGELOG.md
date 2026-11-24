@@ -5,6 +5,20 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Direct figure annotations
+
+- Label observed and counterfactual curves at their endpoints; place sourced
+  comparisons, reproduced values and signed differences beside their matching
+  paths, effect panels and ATT rows. Direct annotation is the default; the
+  earlier reference table remains available with `reference_style="strip"`.
+- Give historical fits absent from the comparison their own labelled rows or
+  panels. Keep percentage and subset-window comparisons distinct from
+  full-period, level-scale ATT markers.
+- Label validation minima, baseline ATTs and the donor exclusions responsible
+  for the largest sensitivity changes directly on the evaluation figures.
+- Move full specifications and audit tables into expandable notebook sections
+  below the figures; retain concise source citations and local export links.
+
 ### SDID inference convergence
 
 - Add an explicit inference iteration-budget override, including when a

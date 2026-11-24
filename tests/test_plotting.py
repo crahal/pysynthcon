@@ -276,7 +276,9 @@ def test_different_benchmark_window_rejected_before_plotting(function):
 def test_text_only_benchmark_and_source_survive_export(tmp_path):
     fit = example(pd.Index([2000, 2001, 2004, 2010]))
     benchmark = literature()
-    fig, axes = plot_comparison({"One": fit, "Two": fit}, benchmark=benchmark)
+    fig, axes = plot_comparison(
+        {"One": fit, "Two": fit}, benchmark=benchmark, reference_style="strip"
+    )
     assert not any(line.get_label() == "Literature mean ATT" for ax in axes for line in ax.lines)
     paths = save_figure(fig, tmp_path / "literature")
     svg = paths[1].read_text()
@@ -418,7 +420,7 @@ def test_paired_reference_strip_exports_signed_differences_without_overlaps(tmp_
             source_label="Upstream software",
         ),
     ]
-    fig, _ = plot_comparison({"SCM": fit}, references=refs)
+    fig, _ = plot_comparison({"SCM": fit}, references=refs, reference_style="strip")
     paths = save_figure(fig, tmp_path / "paired")
     svg = paths[1].read_text()
     for label in [
@@ -457,10 +459,131 @@ def test_paired_reference_strip_exports_signed_differences_without_overlaps(tmp_
 def test_shared_effect_label_is_centered_on_panels_after_reference_strip_and_resize(tmp_path):
     fit = example(pd.Index([2000, 2001, 2004, 2010]))
     refs = [matched_reference(fit) for _ in range(3)]
-    fig, axes = plot_effects({"SCM": fit, "Another": replace(fit)}, references=refs)
+    fig, axes = plot_effects(
+        {"SCM": fit, "Another": replace(fit)}, references=refs, reference_style="strip"
+    )
     for height in (fig.get_figheight(), fig.get_figheight() + 1):
         fig.set_figheight(height)
         save_figure(fig, tmp_path / "label.svg")
         positions = [ax.get_position() for ax in axes.flat if ax.get_visible()]
         expected = (min(box.y0 for box in positions) + max(box.y1 for box in positions)) / 2
         assert fig._supylabel.get_position()[1] == pytest.approx(expected, abs=0.002)
+
+
+@pytest.mark.parametrize("function", [plot_paths, plot_effects, plot_comparison])
+def test_direct_reference_annotations_export_links_without_top_strip(function, tmp_path):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    ref = matched_reference(fit)
+    output = function(fit if function is plot_paths else {"SCM": fit}, references=[ref])
+    fig = output.figure if function is plot_paths else output[0]
+    assert not hasattr(fig, "_pysynth_reference_layout")
+    save_figure(fig, tmp_path / f"{function.__name__}.svg")
+    svg = (tmp_path / f"{function.__name__}.svg").read_text()
+    assert "Paper 1.8" in svg and "+0.200" in svg
+    assert ref.source_url in svg
+    assert "REFERENCE CHECK" not in svg
+    assert "Δ = fit" in svg
+
+
+def test_unplotted_historical_fit_gets_its_own_row_without_changing_input():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    historical = replace(fit, counterfactual=fit.observed - [1, 1, -4, -8])
+    ref = matched_reference(historical, reference=-6)
+    mapping = {"Comparison SCM": fit}
+    _, axes = plot_comparison(mapping, references=[ref])
+    assert list(mapping) == ["Comparison SCM"]
+    assert [t.get_text() for t in axes[0].get_yticklabels()] == [
+        "Comparison SCM",
+        "Reference · Historical SCM",
+    ]
+    np.testing.assert_allclose(axes[0].collections[0].get_offsets(), [[2, 0], [-6, 1]])
+    np.testing.assert_allclose(axes[0].collections[1].get_offsets(), [[-6, 1]])
+    assert not any("Paper" in text.get_text() and text.xy[1] == 0 for text in axes[0].texts)
+
+
+def test_unplotted_reference_panel_includes_historical_effects_in_shared_limits():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    historical = replace(fit, counterfactual=fit.observed - [0, 0, -20, -30])
+    ref = matched_reference(historical, reference=-25)
+    fig, axes = plot_effects({"Comparison": fit}, references=[ref])
+    visible = [ax for ax in axes.flat if ax.get_visible()]
+    assert len(visible) == 2
+    assert axes.shape == (1, 2)
+    assert "Reference · Historical SCM" in visible[1].get_title(loc="left").replace("\n", " ")
+    assert visible[0].get_ylim() == visible[1].get_ylim()
+    assert visible[0].get_ylim()[0] < -30
+    guide = next(
+        line for line in visible[1].lines if line.get_label() == "Published: Historical SCM"
+    )
+    np.testing.assert_array_equal(guide.get_ydata(), [-25, -25])
+    assert not any(line.get_label().startswith("Published:") for line in visible[0].lines)
+
+
+def test_mean_callout_points_to_mean_not_final_effect_and_path_ticks_remain_observed():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    fig, axes = plot_effects({"SCM": fit}, colors={"SCM": "red"})
+    callout = fig._pysynth_direct_annotations[0]
+    assert callout.xy[1] == fit.att
+    assert callout.xy[1] != fit.effects.iloc[-1]
+    assert callout.get_color() == "red"
+    guide = next(line for line in axes[0, 0].lines if line.get_label() == "Fitted mean ATT")
+    np.testing.assert_array_equal(guide.get_xdata(), [2004, 2010])
+    assert guide.get_color() == "red"
+    ax = plot_paths(fit, color="red", intervention_label="Treatment")
+    assert ax.get_legend() is None
+    assert all(2000 <= tick <= 2010 for tick in ax.get_xticks())
+    assert {"Observed", "Synthetic control"}.issubset({t.get_text() for t in ax.texts})
+    assert next(t for t in ax.texts if t.get_text() == "Synthetic control").get_color() == "red"
+    onset = next(t for t in ax.texts if t.get_text().strip() == "Treatment")
+    assert onset.get_position() == (2004, 1.02)
+    assert onset.get_va() == "bottom"
+
+
+@pytest.mark.parametrize("function", [plot_paths, plot_effects, plot_comparison])
+def test_invalid_reference_layout_is_rejected_before_creating_figure(function):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    before = plt.get_fignums()
+    with pytest.raises(ValueError, match="reference_style"):
+        function(fit if function is plot_paths else {"SCM": fit}, reference_style="hidden")
+    assert plt.get_fignums() == before
+
+
+def test_dense_historical_annotations_keep_separate_rows_and_use_empty_facet_space():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    historical = replace(fit, counterfactual=fit.observed - [0, 0, -4, -8])
+    refs = [
+        matched_reference(
+            historical,
+            statistic="mean_percent_effect",
+            reference=-100,
+            units="% of observed GDP",
+            approximate=True,
+        ),
+        matched_reference(
+            historical, window=(2010, 2010), reference=-8, source_label="Original R software"
+        ),
+    ]
+    fits = {f"Model {i}": fit for i in range(12)}
+    fig, axes = plot_effects(fits, references=refs)
+    assert axes[-1, 0].get_position().width > 2.5 * axes[0, 0].get_position().width
+    assert not axes[-1, 1].get_visible() and not axes[-1, 2].get_visible()
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    # Short facets must allow empty lower corners despite font descent and
+    # callout padding; every source box should stay within its own panel.
+    for artist in fig._pysynth_direct_annotations[-2:]:
+        box = artist.get_bbox_patch().get_window_extent(renderer)
+        bounds = artist.axes.get_window_extent(renderer)
+        assert bounds.x0 <= box.x0 < box.x1 <= bounds.x1
+        assert bounds.y0 <= box.y0 < box.y1 <= bounds.y1
+    fig, axes = plot_comparison(fits, references=refs)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    annotations = [artist for artist, _ in fig._pysynth_row_annotations]
+    first, second = [artist.get_window_extent(renderer) for artist in annotations]
+    assert second.y1 < first.y0
+    bounds = axes[0].get_window_extent(renderer)
+    for box in (first, second):
+        assert bounds.x0 <= box.x0 < box.x1 <= bounds.x1
+        assert bounds.y0 <= box.y0 < box.y1 <= bounds.y1
+    assert "% of observed GDP" in annotations[0].get_text()

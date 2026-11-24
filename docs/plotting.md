@@ -107,7 +107,9 @@ save_figure(ax.figure, "figures/california-reference")
 ```
 
 Observed and counterfactual paths differ by both line style and color, so
-their meaning remains clear in grayscale. The legend sits above the data.
+their meaning remains clear in grayscale. Labels connect directly to the
+path endpoints. Set `reference_style="strip"` to use the earlier legend and
+source-strip layout instead.
 `subtitle` and `note` reserve measured caption space in a new figure.
 To embed a plot into your own figure, pass `ax=...` and place figure-level
 captions on that parent figure yourself.
@@ -154,10 +156,12 @@ Importing `pysynth` does not require Matplotlib until plotting is requested.
 ## Compare a published result with its reproduction
 
 Use `ReferenceComparison` to pair a published result with the **same fitted
-specification**. Every figure then reports the source value, the recomputed
-result, and the signed difference, `Δ = reproduced − source`, together with
-the evaluation window, units and linked citation. The calculation uses the
-actual fitted effect path; it never takes a manually entered reproduction.
+specification**. By default, `reference_style="direct"` places source values,
+reproductions and signed differences, `Δ = reproduced − source`, next to the
+corresponding curves, panels or ATT rows. Short numbered citations appear in
+the figure footer; callouts link to their sources in vector
+exports. The calculation uses the actual fitted effect path; it never takes
+a manually entered reproduction.
 
 ```python
 from pysynth import ReferenceComparison, reference_comparison_table
@@ -179,6 +183,9 @@ fig, axes = plot_comparison(fits, references=[reference], units="packs per capit
 fig, axes = plot_effects(fits, references=[reference], ylabel="Effect (packs per capita)")
 ax = plot_paths(fits["SDID"], references=[reference])
 reference_comparison_table([reference]).to_csv("reference-checks.csv", index=False)
+
+# Optional earlier layout, with the complete source text above the chart:
+fig, axes = plot_comparison(fits, references=[reference], reference_style="strip")
 ```
 
 The source remains at its printed precision. `precision` controls the display
@@ -187,18 +194,26 @@ precision. For an approximate headline, set `approximate=True`; the source
 and difference are both marked `≈`. Differences from rounded or approximate
 headlines are descriptive, not optimization errors or replication tolerances.
 
-A hollow ochre diamond identifies the source on the matching estimator's ATT
-row. An ochre dotted segment identifies its source mean on the matching effect
-panel. These appear only when the exact `Estimate` object supplied in the
-reference is plotted. Another method with similar labels or numerical values
-does not inherit that benchmark. Outcome paths and RMSE never receive an ATT
-guide. If the historical fit is separate from the methods being compared, the
-strip still reports its paired values; none of the comparison methods receives
-its guide. No fitted values are changed by plotting.
+A hollow ochre diamond identifies a compatible source mean on the matching
+estimator's ATT row. Its source value and difference sit beneath that row;
+the reproduced estimate beside the marker uses the reference's `precision`.
+An ochre dotted segment identifies the source mean on its matching effect
+panel, with a callout showing the paired values and evaluation window.
+Outcome paths carry textual callouts, and RMSE never receives an ATT guide.
+
+Matching uses the exact `Estimate` object, not similar labels or numerical
+values. In direct mode, a historical fit absent from the supplied mapping is
+automatically added as a separate `Reference · …` row or panel. References
+sharing the same estimate object use one row or panel. The supplied mapping
+and fitted values remain unchanged. This keeps historical specifications
+visible without attaching their benchmark to a different estimator. Strip
+mode retains the original mapping and reports any separate historical fit
+in the source strip instead.
 
 A reference window can cover a subset of the post-period. Its reproduced
 value is calculated on that subset, and its guide on effect paths covers
-only those dates. It does not become a marker on a full-period ATT axis.
+only those dates. On a full-period ATT row, the subset comparison is text
+only; it does not become an incompatible numeric marker.
 Invalid, missing, reversed or pretreatment endpoints raise an error. Every
 reference must share the plotted case's observed outcome and intervention
 boundary.
@@ -207,26 +222,31 @@ For percentage comparisons, `statistic="mean_percent_effect"` computes
 the mean of `100 * (observed - counterfactual) / observed`; its difference is
 reported in percentage points. The denominator is the observed outcome,
 and averaging occurs **after** division. This statistic is used for the
-Basque paper's Figure 2 convention. It remains in the reference strip when
+Basque paper's Figure 2 convention. It appears as a textual comparison when
 the main figure uses dollar units; no percentage guide is drawn on those
 axes. Zero observed denominators raise an error.
 
 The empirical notebooks call
 `pysynth.replication.reference_comparisons(name, reference)` to bind their
-historical fits to sourced results. Basque and German strips distinguish
+historical fits to sourced results. Basque and German annotations distinguish
 approximate paper headlines from precise upstream software targets. The
 California helper also accepts `additional={"SC": sc, "DID": did}` for the
 paper's own SC and DID specifications. Kansas cites the authors' vignette and
 prints the quarterly evaluation window. See [replication provenance](replication.md)
-for source locators and specification details.
+for source locators and specification details. Full context and numerical
+precision remain available in `reference_comparison_table`; the notebooks
+show these tables in expandable audit sections below the figures and export
+them as CSV.
 
 ## Annotate a general literature benchmark
 
 The earlier `LiteratureBenchmark` interface remains available for descriptive
-context without a paired reproduction. Pass it to any of the three plotting functions. The
-result appears in a separate, warm-toned source strip, with its reported
-precision, citation and specification context. Citation text links to the
-source in vector exports; notebooks also print a clickable source link.
+context without a paired reproduction. Pass it to any of the three plotting
+functions. By default its headline appears in a callout inside the chart,
+with a numbered citation in the footer and a source link on the callout. Use `reference_style="strip"` for the
+earlier warm-toned source strip with its full specification context. Prefer
+`ReferenceComparison` when a source result belongs to one exact fitted
+specification.
 
 ```python
 from pysynth import LiteratureBenchmark
@@ -268,9 +288,10 @@ The notebooks now use the paired `reference_comparisons` helper above. Use
 either `references` or `benchmark` on a figure; supplying both raises an error.
 See the [benchmark provenance](replication.md)
 for page/table locators, the pinned Kansas vignette, and the German erratum.
-Default figure heights allow extra room for the source strip; explicit
-`figsize` values are respected. With a caller-supplied `ax`, place literature
-annotations on the parent figure instead.
+Strip mode allows extra room for the source strip; explicit `figsize` values
+are respected. With a caller-supplied `ax`, place literature annotations on
+the parent figure instead. Review label placement after changing dimensions
+or adding long custom text; Matplotlib artists remain editable.
 
 ## Reproduce the notebook figures
 
@@ -279,14 +300,18 @@ effect-panel figure, a validation figure and a donor-sensitivity figure,
 plus comparison and source-check values as CSV under
 `empirical_examples/figures/<example>/`. These generated files stay local and
 are excluded from version control and source distributions. The committed
-notebooks embed all five figures and print the local export paths; rerun them
-to create PDF, SVG and PNG files. The historical reference figure is explicitly
-separate from the common-comparison specifications.
+notebooks embed all five figures, with download and source links immediately
+after each figure. Full setup notes, specification details and audit tables
+can be expanded without putting long text blocks above the charts. Rerun
+the notebooks to create PDF, SVG and PNG files. Historical reference fits
+remain explicitly labelled when shown alongside common-comparison methods.
 
 `plot_backtest(validation)` displays pooled held-out RMSE beside all fold
-scores on a common color scale. `plot_donor_sensitivity(sensitivity)` displays
-baseline and exclusion estimates, their scenario range and the largest
-absolute ATT change. Both accept `title`, `units`, `labels`, `figsize` and
+scores on a common color scale, directly labelling the lowest pooled RMSE
+(including exact ties). `plot_donor_sensitivity(sensitivity)` labels the baseline and largest
+absolute ATT change beside the relevant estimates, including the donor
+exclusion responsible. It also shows every exclusion estimate and the
+scenario range. Both accept `title`, `units`, `labels`, `figsize` and
 `note`; both return a Figure and two editable Axes. Neither invents confidence
 intervals or attributes these new diagnostics to a paper's published results.
 See the [evaluation guide](evaluation.md) for complete examples.

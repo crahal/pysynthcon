@@ -44,8 +44,10 @@ def test_validation_plot_shows_pooled_and_each_fold_error(comparison_panel):
     assert [t.get_text() for t in axes[0].get_yticklabels()] == list(table.index)
     assert axes[0].get_xlim()[0] == 0
     assert "dollars" in axes[0].get_xlabel()
-    text = " ".join(t.get_text() for ax in fig.axes for t in ax.texts)
-    assert "6 held-out predictions per candidate" in " ".join(text.split())
+    assert "6 held-out predictions per candidate" in axes[0].get_xlabel()
+    annotations = [t for t in axes[0].texts if t.get_text() == "Lowest validation RMSE"]
+    assert len(annotations) == 1
+    assert annotations[0].xy == (table.validation_rmse.iloc[0], 0)
     assert mpl.rcParams == before
     plt.close(fig)
 
@@ -65,10 +67,34 @@ def test_donor_plot_preserves_every_scenario_and_baseline(comparison_panel):
     np.testing.assert_allclose(
         [c.get_offsets()[0, 0] for c in axes[1].collections], result.summary.max_abs_change
     )
+    for row, name in enumerate(result.summary.index):
+        scenario = result.summary.loc[name, "worst_scenario"]
+        label = f"Omit {scenario[5:]}"
+        annotation = next(t for t in axes[1].texts if t.get_text() == label and t.xy[1] == row)
+        assert annotation.xy == (result.summary.loc[name, "max_abs_change"], row)
+        selected = result.table.loc[
+            (result.table.model == name) & (result.table.scenario == scenario)
+        ].iloc[0]
+        assert abs(selected.att - result.baseline[name].att) == annotation.xy[0]
     assert axes[0].get_xlim()[0] < min(0, result.table.att.min())
     assert axes[0].get_xlim()[1] > max(0, result.table.att.max())
     footer = " ".join(t.get_text() for ax in fig.axes for t in ax.texts)
     assert "not confidence intervals" in " ".join(footer.split())
+    plt.close(fig)
+
+
+def test_validation_plot_labels_all_exact_ties(comparison_panel):
+    result = backtest(
+        comparison_panel,
+        {"First": DifferenceInDifferences, "Identical": DifferenceInDifferences},
+        initial_window=5,
+        horizon=2,
+    )
+    fig, axes = plot_backtest(result)
+    annotations = [t for t in axes[0].texts if "Lowest validation RMSE" in t.get_text()]
+    assert len(annotations) == 2
+    assert all(t.get_text() == "Lowest validation RMSE (tie)" for t in annotations)
+    assert [t.xy[1] for t in annotations] == [0, 1]
     plt.close(fig)
 
 
@@ -81,8 +107,17 @@ def test_evaluation_figures_export_without_clipping(comparison_panel, tmp_path, 
         )
         fig, _ = plot_backtest(result, units=units)
     else:
-        result = donor_sensitivity(comparison_panel, {"Long method name": SyntheticControl})
+        result = donor_sensitivity(
+            comparison_panel,
+            {"Long method name": SyntheticControl},
+            exclusions={"Exclude the northern comparison region": ["A"]},
+        )
         fig, _ = plot_donor_sensitivity(result, units=units)
+        assert any(
+            " ".join(t.get_text().split()) == "Exclude the northern comparison region"
+            for ax in fig.axes
+            for t in ax.texts
+        )
     paths = save_figure(fig, tmp_path / kind)
     assert {p.suffix for p in paths} == {".svg", ".pdf", ".png"}
     assert all(p.stat().st_size > 1000 for p in paths)

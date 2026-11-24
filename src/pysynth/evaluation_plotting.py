@@ -50,7 +50,8 @@ def plot_backtest(
 
     Rows follow increasing pooled validation RMSE. Every heatmap cell uses
     the same color scale. No confidence intervals or causal ranking are
-    implied. Validation donor outcomes are available; held-out treated
+    implied. The lowest pooled RMSE is labelled beside its point, including
+    all exact ties. Validation donor outcomes are available; held-out treated
     outcomes are masked during fitting. Requires a :class:`BacktestResult`.
     Use :func:`pysynth.save_figure` for vector and high-resolution export.
     """
@@ -67,11 +68,9 @@ def plot_backtest(
     values = matrix.to_numpy()
     if not np.isfinite(values).all() or (values < 0).any():
         raise ValueError("fold RMSE must be finite, nonnegative and present for every model")
-    caption = (
-        "Actual post-treatment rows are excluded; held-out treated outcomes are masked. "
-        "Lower prediction error is not evidence of causal identification. "
-        "Overlapping folds, if requested, count each prediction instance."
-    )
+    caption = "Pretreatment predictions only; lower RMSE does not establish causal validity."
+    if result.predictions.duplicated(["model", "time"]).any():
+        caption += " Overlapping folds count repeated prediction instances."
     counts = table.n_predictions.unique()
     sample_size = (
         f"{counts[0]} held-out predictions per candidate"
@@ -80,9 +79,9 @@ def plot_backtest(
     )
     with publication_style():
         fig, body = _figure_grid(
-            figsize or (7.2, 2.3 + 0.43 * len(names)),
+            figsize or (7.2, 1.9 + 0.48 * len(names)),
             title,
-            f"{len(names)} candidates · {len(matrix.columns)} temporal folds · {sample_size}",
+            None,
             caption if note is None else note,
         )
         grid = body.subgridspec(1, 2, width_ratios=[1.1, 1], wspace=0.14)
@@ -91,6 +90,7 @@ def plot_backtest(
         _rows(left, names, labels)
         pooled = table.validation_rmse.to_numpy()
         left.scatter(pooled, np.arange(len(names)), s=29, color=BLUE, zorder=3)
+        minima = pooled == pooled.min()
         for row, value in enumerate(pooled):
             left.annotate(
                 _number(value),
@@ -100,8 +100,22 @@ def plot_backtest(
                 va="center",
                 fontsize=8,
             )
-        left.set_xlim(0, (pooled.max() or 1) * 1.4)
-        left.set_xlabel(f"Pooled held-out RMSE\n({units})", fontsize=8)
+            if minima[row]:
+                # Label all exact ties: choosing the first row would imply a
+                # distinction the validation results do not support.
+                right_aligned = value > 0.6 * (pooled.max() or 1)
+                left.annotate(
+                    "Lowest validation RMSE" + (" (tie)" if minima.sum() > 1 else ""),
+                    (value, row),
+                    xytext=(-7 if right_aligned else 7, -10),
+                    textcoords="offset points",
+                    va="top",
+                    ha="right" if right_aligned else "left",
+                    fontsize=7,
+                    color=BLUE,
+                )
+        left.set_xlim(0, (pooled.max() or 1) * 1.45)
+        left.set_xlabel(f"Pooled held-out RMSE\n({units})\n{sample_size}", fontsize=7.5)
         left.set_title("A  Overall validation", loc="left", fontsize=9, fontweight="semibold")
 
         maximum = float(values.max()) or 1.0
@@ -140,7 +154,9 @@ def plot_donor_sensitivity(
 
     Horizontal spans describe the fitted scenario range, not uncertainty.
     Each scenario is a complete refit, including repeated donor selection.
-    Rows preserve estimator order. Requires a :class:`DonorSensitivityResult`.
+    Baseline values and the exclusion responsible for each largest change
+    are annotated beside their points. Rows preserve estimator order.
+    Requires a :class:`DonorSensitivityResult`.
     Returns Figure and two editable Matplotlib Axes; no models are refitted.
     """
     from .sensitivity import DonorSensitivityResult
@@ -151,18 +167,12 @@ def plot_donor_sensitivity(
     if summary.empty:
         raise ValueError("sensitivity results must not be empty")
     names = summary.index.tolist()
-    caption = (
-        "Blue diamonds: baseline fits. Ochre dots: complete refits after donor exclusions. "
-        "Horizontal spans are scenario ranges, not confidence intervals. "
-        "Fixed seeds make runs reproducible; changed pools can still change random samples."
-    )
+    caption = "Ochre dots: complete exclusion refits. Spans show scenario ranges, not confidence intervals."
     with publication_style():
-        from matplotlib.lines import Line2D
-
         fig, body = _figure_grid(
-            figsize or (7.2, 2.4 + 0.48 * len(names)),
+            figsize or (7.2, 1.9 + 0.62 * len(names)),
             title,
-            f"{len(names)} estimators · {len(result.estimates)} exclusion scenarios",
+            None,
             caption if note is None else note,
         )
         grid = body.subgridspec(1, 2, width_ratios=[1.3, 1], wspace=0.15)
@@ -183,6 +193,17 @@ def plot_donor_sensitivity(
             offset = np.linspace(-0.13, 0.13, len(values)) if len(values) > 1 else np.zeros(1)
             left.scatter(values, row + offset, s=14, color=LITERATURE, alpha=0.55, zorder=3)
             left.scatter([baseline], [row], s=34, marker="D", color=BLUE, zorder=4)
+            left.annotate(
+                f"Baseline {_number(baseline)}",
+                (baseline, row),
+                xytext=(0, 12),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                color=BLUE,
+                bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.2},
+            )
             change = float(summary.loc[name, "max_abs_change"])
             right.scatter([change], [row], color=BLUE, s=28, zorder=3)
             right.annotate(
@@ -193,26 +214,35 @@ def plot_donor_sensitivity(
                 va="center",
                 fontsize=8,
             )
+            scenario = str(summary.loc[name, "worst_scenario"])
+            scenario_label = f"Omit {scenario[5:]}" if scenario.startswith("omit:") else scenario
+            right.annotate(
+                fill(scenario_label, 23),
+                (change, row),
+                xytext=(0, -11),
+                textcoords="offset points",
+                ha="center",
+                va="top",
+                fontsize=7,
+                color=MUTED,
+            )
         low, high = min(all_values), max(all_values)
         span = high - low or 1.0
         left.set_xlim(low - 0.1 * span, high + 0.1 * span)
         right.set_xlim(0, (summary.max_abs_change.max() or 1) * 1.4)
-        left.set_xlabel(f"ATT ({units})", fontsize=8)
         right.set_xlabel(f"Maximum |ATT change|\n({units})", fontsize=8)
         left.set_title(
             "A  Baseline and exclusion fits", loc="left", fontsize=9, fontweight="semibold"
         )
-        right.set_title("B  Largest change", loc="left", fontsize=9, fontweight="semibold")
-        left.legend(
-            handles=[
-                Line2D([], [], marker="D", color=BLUE, linestyle="none", label="Baseline"),
-                Line2D([], [], marker="o", color=LITERATURE, linestyle="none", label="Exclusion"),
-            ],
-            loc="upper left",
-            bbox_to_anchor=(0, -0.16),
-            ncol=2,
-            frameon=False,
-            fontsize=7,
+        right.set_title(
+            "B  Largest change · exclusion", loc="left", fontsize=8.5, fontweight="semibold"
         )
+        counts = summary.n_scenarios.unique()
+        count_note = (
+            f"{counts[0]} exclusion refits per estimator"
+            if len(counts) == 1
+            else f"{len(result.table)} exclusion refits in total"
+        )
+        left.set_xlabel(f"ATT ({units})\n{count_note}", fontsize=7.5)
         _finish_figure(fig)
         return fig, axes

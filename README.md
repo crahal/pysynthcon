@@ -207,8 +207,12 @@ save_figure(fig, "figures/california-effects")
 
 See the embedded figures in the [California notebook](empirical_examples/california.ipynb).
 Every notebook displays three reference/comparison figures with **source /
-reproduction / difference** annotations using matching specifications and periods,
-plus two new figures for pretreatment validation and donor-exclusion sensitivity.
+reproduction / difference** annotations directly beside the matching curves,
+panels and ATT rows. Separate historical fits receive their own reference row
+or panel. Two further figures label pretreatment validation and donor-exclusion
+sensitivity results directly. Expandable notes retain full specifications
+and audit tables; download links follow each figure. Use
+`reference_style="strip"` for the earlier source-strip layout.
 Rerunning a notebook
 creates local PDF, SVG and PNG exports, CSVs of source comparisons and estimates,
 and fitting diagnostics. Generated files stay outside version control.

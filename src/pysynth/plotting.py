@@ -133,7 +133,7 @@ class ReferenceComparison:
 
 
 def reference_comparison_table(references: Sequence[ReferenceComparison]) -> pd.DataFrame:
-    """Return the numeric values and provenance displayed in reference strips."""
+    """Return full numeric values and provenance for figure annotations."""
     references = _references(references)
     return pd.DataFrame(
         [
@@ -217,6 +217,303 @@ def _reference_effect(ax, x, references, estimate):
             linestyle=(0, (2, 2)),
             label=f"{ref.source_label}: {ref.label}",
             zorder=2.5,
+        )
+
+
+def _annotation_style(style):
+    if style not in {"direct", "strip"}:
+        raise ValueError("reference_style must be 'direct' or 'strip'")
+
+
+def _reference_fits(estimates, references):
+    """Give an unplotted historical fit its own explicitly named row/panel."""
+    result = dict(estimates)
+    for ref in references:
+        if any(ref.estimate is fit for fit in result.values()):
+            continue
+        name = f"Reference · {ref.label}"
+        while name in result:
+            name += " · historical"
+        result[name] = ref.estimate
+    return result
+
+
+def _source_numbers(references):
+    sources = {}
+    for ref in references:
+        key = (ref.citation, ref.source_url)
+        if key not in sources:
+            sources[key] = len(sources) + 1
+    return sources
+
+
+def _direct_note(note, references, benchmark):
+    """Short citations; links live on callouts and full details stay in the table."""
+    sources = _source_numbers(references)
+    lines = [note] if note else []
+    if references:
+        lines.append("Δ = fit − source; source rounding retained.")
+    lines.extend(f"[{number}] {citation}" for (citation, _), number in sources.items())
+    if benchmark is not None:
+        lines.append(benchmark.citation)
+    return "\n".join(lines) or None
+
+
+def _reference_text(ref, number, *, compact=False):
+    source = {
+        "Published": "Paper",
+        "Original R software": "R Synth",
+        "Upstream software": "Upstream",
+        "Authors’ vignette": "Vignette",
+    }.get(ref.source_label, ref.source_label)
+    prefix = "≈ " if ref.approximate else ""
+    unit = "%" if ref.statistic == "mean_percent_effect" else ""
+    delta_unit = " pp" if unit else ""
+    reported = prefix + _reference_number(ref.reference, ref.reference_precision) + unit
+    reproduced = _reference_number(ref.reproduced, ref.precision) + unit
+    difference = prefix + _reference_number(ref.difference, ref.precision, signed=True) + delta_unit
+    window = ref.window_label or f"{ref.window[0]}–{ref.window[1]}"
+    if compact:
+        return f"{source} {reported} · Δ {difference} [{number}]"
+    scale = f"\n{ref.units}" if unit else ""
+    return f"{source} {reported} · fit {reproduced}\n{window} · Δ {difference} [{number}]{scale}"
+
+
+def _reference_lines(ref):
+    compact = bool(_matched_references([ref], ref.estimate, full_window=True))
+    return len(_reference_text(ref, 1, compact=compact).splitlines())
+
+
+def _reference_spacing(ref):
+    return 0.6 + 0.4 * _reference_lines(ref)
+
+
+def _callout(ax, text, xy, *, width=36, fontsize=7.3, color=LITERATURE, url=None):
+    """A data-anchored callout, positioned in available space at export time."""
+    original = text
+    text = "\n".join(fill(line, width=width) for line in text.splitlines())
+    artist = ax.annotate(
+        text,
+        xy=xy,
+        xycoords="data",
+        xytext=(0.03, 0.96),
+        textcoords="axes fraction",
+        ha="left",
+        va="top",
+        fontsize=fontsize,
+        color=color,
+        linespacing=1.35,
+        bbox={
+            "boxstyle": "round,pad=0.3",
+            "facecolor": "white",
+            "edgecolor": "none",
+            "alpha": 0.94,
+        },
+        arrowprops={"arrowstyle": "-", "color": color, "linewidth": 0.6, "relpos": (0.5, 0.5)},
+        annotation_clip=False,
+        zorder=6,
+    )
+    artist.set_in_layout(False)
+    artist._pysynth_callout_text = original
+    if url:
+        artist.set_url(url)
+    ax.figure._pysynth_direct_annotations = getattr(
+        ax.figure, "_pysynth_direct_annotations", []
+    ) + [artist]
+    return artist
+
+
+def _annotate_references(ax, x, references, estimate, *, effects=False, small=False, color=BLUE):
+    matched = [ref for ref in references if ref.estimate is estimate]
+    numbers = _source_numbers(references)
+    if not matched:
+        if effects:
+            ax.plot(
+                [x[estimate.n_pre], x[-1]],
+                [estimate.att, estimate.att],
+                color=color,
+                linewidth=0.6,
+                linestyle=(0, (2, 3)),
+                alpha=0.65,
+                label="Fitted mean ATT",
+                zorder=2.5,
+            )
+            _callout(
+                ax,
+                f"Mean ATT {_number(estimate.att)}",
+                ((x[estimate.n_pre] + x[-1]) / 2, estimate.att),
+                width=27,
+                fontsize=7,
+                color=color,
+            )
+        return
+    # Each callout uses one actual source window; unlike a full-period ATT,
+    # percentage and subset-window results never acquire a level-scale guide.
+    for ref in matched:
+        pos = ref._positions()
+        middle = (pos.start + pos.stop - 1) // 2
+        target = (
+            estimate.effects.iloc[middle]
+            if effects
+            else (estimate.observed.iloc[middle] + estimate.counterfactual.iloc[middle]) / 2
+        )
+        if effects and ref.statistic == "mean_effect":
+            target = ref.reference
+        _callout(
+            ax,
+            _reference_text(ref, numbers[(ref.citation, ref.source_url)]),
+            (x[middle], target),
+            width=29 if small else 47,
+            fontsize=6.8 if small else 7.8,
+            url=ref.source_url,
+        )
+
+
+def _layout_annotations(fig):
+    """Choose empty corners using rendered path geometry and prior callouts."""
+    from matplotlib.transforms import Bbox
+
+    renderer = fig.canvas.get_renderer()
+    occupied = {}
+    for artist in getattr(fig, "_pysynth_direct_annotations", []):
+        ax = artist.axes
+        bounds = ax.get_window_extent(renderer)
+        artist.set_text(
+            _wrap_measured(artist._pysynth_callout_text, artist, renderer, bounds.width * 0.87)
+        )
+        points = []
+        for line in ax.lines:
+            if line.get_label() == "Intervention":
+                continue
+            vertices = line.get_transform().transform(line.get_path().vertices)
+            if len(vertices) > 1:
+                # Sample segments too: sparse annual data must not hide collisions.
+                vertices = np.concatenate(
+                    [
+                        a + np.linspace(0, 1, 12)[:, None] * (b - a)
+                        for a, b in zip(vertices[:-1], vertices[1:])
+                    ]
+                )
+            points.extend(vertices)
+        points = np.asarray(points).reshape(-1, 2)
+        previous = occupied.setdefault(
+            ax,
+            [
+                t.get_window_extent(renderer)
+                for t in ax.texts
+                if t not in getattr(fig, "_pysynth_direct_annotations", [])
+            ],
+        )
+        best = None
+        for horizontal, vertical in [
+            (0.03, 0.96),
+            (0.03, 0.04),
+            (0.97, 0.96),
+            (0.97, 0.04),
+            (0.03, 0.50),
+            (0.97, 0.50),
+        ]:
+            artist.set_position((horizontal, vertical))
+            artist.set_ha("left" if horizontal < 0.5 else "right")
+            artist.set_va("top" if vertical > 0.5 else "bottom")
+            artist.update_positions(renderer)
+            artist.update_bbox_position_size(renderer)
+            box = artist.get_bbox_patch().get_window_extent(renderer).expanded(1.03, 1.08)
+            # Font descent and box padding are asymmetric: equal fractional
+            # margins can put only the bottom candidate beyond the axes. Move
+            # each candidate inside first, so a tiny overhang cannot make us
+            # prefer a position covering a curve over an otherwise empty corner.
+            horizontal += (max(0, bounds.x0 - box.x0) - max(0, box.x1 - bounds.x1)) / bounds.width
+            vertical += (max(0, bounds.y0 - box.y0) - max(0, box.y1 - bounds.y1)) / bounds.height
+            artist.set_position((horizontal, vertical))
+            artist.update_positions(renderer)
+            artist.update_bbox_position_size(renderer)
+            box = artist.get_bbox_patch().get_window_extent(renderer).expanded(1.03, 1.08)
+            outside = (
+                max(0, bounds.x0 - box.x0)
+                + max(0, box.x1 - bounds.x1)
+                + max(0, bounds.y0 - box.y0)
+                + max(0, box.y1 - bounds.y1)
+            )
+            overlap = sum(
+                (Bbox.intersection(box, old).width * Bbox.intersection(box, old).height)
+                for old in previous
+                if Bbox.intersection(box, old) is not None
+            )
+            covered = np.sum(
+                (points[:, 0] >= box.x0)
+                & (points[:, 0] <= box.x1)
+                & (points[:, 1] >= box.y0)
+                & (points[:, 1] <= box.y1)
+            )
+            target = ax.transData.transform(artist.xy)
+            distance = np.linalg.norm(
+                target - np.array([(box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2])
+            )
+            score = outside * 1000 + overlap * 10 + covered * 8 + distance * 0.01
+            if best is None or score < best[0]:
+                best = (score, horizontal, vertical, box)
+        _, horizontal, vertical, box = best
+        artist.set_position((horizontal, vertical))
+        artist.set_ha("left" if horizontal < 0.5 else "right")
+        artist.set_va("top" if vertical > 0.5 else "bottom")
+        previous.append(box)
+    fig.canvas.draw()
+
+
+def _layout_row_annotations(fig):
+    renderer = fig.canvas.get_renderer()
+    offsets = {}
+    for artist, original in getattr(fig, "_pysynth_row_annotations", []):
+        ax = artist.axes
+        bounds = ax.get_window_extent(renderer)
+        text = _wrap_measured(original, artist, renderer, bounds.width * 0.94)
+        artist.set_text(text)
+        width = max(
+            renderer.get_text_width_height_descent(line, artist.get_fontproperties(), ismath=False)[
+                0
+            ]
+            for line in text.splitlines()
+        )
+        target = ax.transData.transform(artist.xy)[0]
+        left = min(target + 7 * fig.dpi / 72, bounds.x1 - width - bounds.width * 0.02)
+        fraction = max(0.02, (left - bounds.x0) / bounds.width)
+        key = (ax, artist.xy[1])
+        offset = offsets.get(key, 12)
+        artist.set_anncoords(("axes fraction", "offset points"))
+        artist.set_position((fraction, -offset))
+        offsets[key] = offset + len(text.splitlines()) * artist.get_fontsize() * 1.2 + 6
+
+
+def _direct_path_labels(ax, x, estimate, observed_label, counterfactual_label, color=BLUE):
+    end = x[-1]
+    span = x[-1] - x[0]
+    ticks = ax.get_xticks()
+    ax.set_xlim(ax.get_xlim()[0], end + 0.32 * span)
+    ax.set_xticks([tick for tick in ticks if x[0] <= tick <= end])
+    low, high = ax.get_ylim()
+    values = [estimate.observed.iloc[-1], estimate.counterfactual.iloc[-1]]
+    separation = (high - low) * 0.10
+    positions = list(values)
+    if abs(values[0] - values[1]) < separation:
+        order = np.argsort(values)
+        center = sum(values) / 2
+        positions[order[0]], positions[order[1]] = center - separation / 2, center + separation / 2
+    for value, position, label, color in zip(
+        values, positions, (observed_label, counterfactual_label), (INK, color)
+    ):
+        ax.annotate(
+            fill(label, width=20),
+            xy=(end, value),
+            xytext=(end + 0.035 * span, position),
+            ha="left",
+            va="center",
+            fontsize=7.5,
+            color=color,
+            linespacing=1.3,
+            arrowprops={"arrowstyle": "-", "color": color, "linewidth": 0.7},
+            annotation_clip=False,
+            zorder=5,
         )
 
 
@@ -639,6 +936,12 @@ def _finish_figure(fig):
 
             FigureCanvasAgg(fig)
         _layout_captions(fig)
+        _layout_row_annotations(fig)
+        _layout_annotations(fig)
+        if getattr(fig, "_pysynth_body_y_label", None) is not None:
+            label, axes = fig._pysynth_body_y_label
+            positions = [ax.get_position() for ax in axes if ax.get_visible()]
+            label.set_y((min(b.y0 for b in positions) + max(b.y1 for b in positions)) / 2)
     finally:
         fig.set_canvas(original_canvas)
 
@@ -698,6 +1001,12 @@ def _layout_captions(fig):
             offset += row_height + 0.025
             source.set_y(1 - offset / benchmark_height)
             offset += source_height + 0.105
+    for ax, original in getattr(fig, "_pysynth_axis_y_labels", []):
+        ax.set_ylabel(
+            _wrap_measured(
+                original, ax.yaxis.label, renderer, ax.get_window_extent(renderer).height * 0.95
+            )
+        )
     body_height = max(1, fig.get_figheight() - head - foot - benchmark_height)
     ratios = [head, body_height, foot]
     if benchmark_layout is not None or reference_layout is not None:
@@ -713,7 +1022,12 @@ def _layout_captions(fig):
     if body_label is not None:
         artist, axes = body_label
         positions = [ax.get_position() for ax in axes if ax.get_visible()]
-        artist.set_y((min(box.y0 for box in positions) + max(box.y1 for box in positions)) / 2)
+        bottom, top = min(box.y0 for box in positions), max(box.y1 for box in positions)
+        original = getattr(fig, "_pysynth_body_y_label_text", artist.get_text())
+        artist.set_text(
+            _wrap_measured(original, artist, renderer, (top - bottom) * fig.bbox.height * 0.95)
+        )
+        artist.set_y((bottom + top) / 2)
 
 
 def plot_paths(
@@ -731,6 +1045,7 @@ def plot_paths(
     intervention_label: str | None = None,
     benchmark: LiteratureBenchmark | None = None,
     references: Sequence[ReferenceComparison] | None = None,
+    reference_style: str = "direct",
     color: str = BLUE,
     figsize: tuple | None = None,
 ):
@@ -744,9 +1059,11 @@ def plot_paths(
     ``note`` reserve figure-level caption space and require ``ax=None``.
     ``benchmark`` adds a sourced annotation; its numeric guide is drawn only
     with ``effects=True``, never on an outcome-level axis.
-    ``references`` displays source, reproduction and signed difference for
-    explicitly matched specifications. Use it instead of ``benchmark``.
+    ``references`` annotates source, reproduction and signed difference beside
+    the matched path. Curves are labelled directly. Use it instead of ``benchmark``.
+    ``reference_style="strip"`` restores the earlier table above the axes.
     """
+    _annotation_style(reference_style)
     _validate(estimate)
     _validate_benchmark(benchmark, estimate)
     references = _plot_references(references, estimate, benchmark)
@@ -764,14 +1081,18 @@ def plot_paths(
                 or (
                     7.2,
                     3.8
-                    + (0.75 if benchmark else 0)
-                    + (0.4 + 0.85 * len(references) if references else 0),
+                    + (0.75 if benchmark and reference_style == "strip" else 0)
+                    + (
+                        0.4 + 0.85 * len(references)
+                        if references and reference_style == "strip"
+                        else 0
+                    ),
                 ),
                 title or estimate.method,
                 subtitle,
-                note,
-                benchmark,
-                references,
+                _direct_note(note, references, benchmark) if reference_style == "direct" else note,
+                benchmark if reference_style == "strip" else None,
+                references if reference_style == "strip" else (),
             )
             ax = fig.add_subplot(body)
         x, kind = _time(estimate.observed.index)
@@ -805,22 +1126,34 @@ def plot_paths(
             selected = [
                 (handle, label) for handle, label in zip(handles, labels) if label != "Intervention"
             ]
-            ax.legend(
-                *zip(*selected),
-                loc="lower left",
-                bbox_to_anchor=(0, 1.01),
-                ncols=2,
-                borderaxespad=0,
-                handlelength=2.8,
-                columnspacing=2,
-            )
+            if reference_style == "direct":
+                _direct_path_labels(ax, x, estimate, observed_label, counterfactual_label, color)
+            else:
+                ax.legend(
+                    *zip(*selected),
+                    loc="lower left",
+                    bbox_to_anchor=(0, 1.01),
+                    ncols=2,
+                    borderaxespad=0,
+                    handlelength=2.8,
+                    columnspacing=2,
+                )
+        if reference_style == "direct":
+            _annotate_references(ax, x, references, estimate, effects=effects, color=color)
+            if benchmark is not None:
+                _callout(
+                    ax,
+                    f"{benchmark.label}: {benchmark.headline}",
+                    (x[-1], estimate.effects.iloc[-1] if effects else estimate.observed.iloc[-1]),
+                    url=benchmark.source_url,
+                )
         if intervention_label is not None:
             ax.text(
                 x[estimate.n_pre],
-                0.98,
+                1.02 if reference_style == "direct" else 0.98,
                 f" {intervention_label}",
                 transform=ax.get_xaxis_transform(),
-                va="top",
+                va="bottom" if reference_style == "direct" else "top",
                 fontsize=8,
                 color=MUTED,
                 bbox={"facecolor": POST, "edgecolor": "none", "pad": 2},
@@ -832,7 +1165,10 @@ def plot_paths(
                 fontweight="semibold",
                 pad=31 if not effects else 12,
             )
-        ax.set_ylabel(ylabel or ("Observed − counterfactual" if effects else "Outcome"))
+        label = ylabel or ("Observed − counterfactual" if effects else "Outcome")
+        ax.set_ylabel(label)
+        if own_figure:
+            ax.figure._pysynth_axis_y_labels = [(ax, label)]
         ax.set_xlabel(
             xlabel
             or estimate.observed.index.name
@@ -858,6 +1194,7 @@ def plot_effects(
     figsize: tuple | None = None,
     benchmark: LiteratureBenchmark | None = None,
     references: Sequence[ReferenceComparison] | None = None,
+    reference_style: str = "direct",
     note: str
     | None = "Common outcome sample and treatment date. Shading marks the post-period; no uncertainty intervals are shown.",
 ):
@@ -869,20 +1206,26 @@ def plot_effects(
     ``colors`` customize display without renaming estimates. Unused panels
     are hidden. The returned array always has shape (nrows, ncols).
     A numeric ``benchmark`` adds a dotted source mean over the matching
-    post-period, with its citation and specification in a separate strip.
-    ``references`` instead pairs each published result with its own fitted
-    specification. Numeric guides occur only on the matching method's panel.
+    post-period. Direct labels identify the matching source and reproduced mean.
+    ``references`` pairs each source with its exact fitted specification. Any
+    reference fit absent from ``estimates`` gets a separate, labelled panel.
+    Numeric guides occur only on the matching method's panel. Use
+    ``reference_style="strip"`` for the earlier table layout without added panels.
     """
+    _annotation_style(reference_style)
     _estimates(estimates)
     if isinstance(ncols, bool) or not isinstance(ncols, (int, np.integer)) or ncols < 1:
         raise ValueError("ncols must be a positive integer")
     if ylim is not None and (len(ylim) != 2 or not np.isfinite(ylim).all() or ylim[0] >= ylim[1]):
         raise ValueError("ylim must be two finite, increasing values")
-    ncols = min(ncols, len(estimates))
-    nrows = (len(estimates) + ncols - 1) // ncols
+    original_count = len(estimates)
     reference = next(iter(estimates.values()))
     _validate_benchmark(benchmark, reference)
     references = _plot_references(references, reference, benchmark)
+    if reference_style == "direct":
+        estimates = _reference_fits(estimates, references)
+    ncols = min(ncols, len(estimates))
+    nrows = (len(estimates) + ncols - 1) // ncols
     with publication_style():
         fig, body = _figure_grid(
             figsize
@@ -890,14 +1233,16 @@ def plot_effects(
                 7.2,
                 1.1
                 + 1.85 * nrows
-                + (0.75 if benchmark else 0)
-                + (0.4 + 0.85 * len(references) if references else 0),
+                + (0.75 if benchmark and reference_style == "strip" else 0)
+                + (
+                    0.4 + 0.85 * len(references) if references and reference_style == "strip" else 0
+                ),
             ),
             title,
             subtitle,
-            note,
-            benchmark,
-            references,
+            _direct_note(note, references, benchmark) if reference_style == "direct" else note,
+            benchmark if reference_style == "strip" else None,
+            references if reference_style == "strip" else (),
         )
         grid = body.subgridspec(nrows, ncols, hspace=0.22, wspace=0.12)
         axes = np.empty((nrows, ncols), dtype=object)
@@ -919,7 +1264,12 @@ def plot_effects(
         for position, (name, result) in enumerate(estimates.items()):
             row, col = divmod(position, ncols)
             first = axes[0, 0] if position else None
-            ax = fig.add_subplot(grid[row, col], sharex=first, sharey=first if sharey else None)
+            cell = (
+                grid[row, :]
+                if (position >= original_count and row == nrows - 1 and len(estimates) % ncols == 1)
+                else grid[row, col]
+            )
+            ax = fig.add_subplot(cell, sharex=first, sharey=first if sharey else None)
             axes[row, col] = ax
             _axes_style(ax)
             _time_axis(ax, reference.observed.index, x, kind)
@@ -948,6 +1298,25 @@ def plot_effects(
                     )
                 )
             )
+            if reference_style == "direct":
+                _annotate_references(
+                    ax,
+                    x,
+                    references,
+                    result,
+                    effects=True,
+                    small=True,
+                    color=(colors or {}).get(name, BLUE),
+                )
+                if benchmark is not None:
+                    _callout(
+                        ax,
+                        f"{benchmark.label}: {benchmark.headline}",
+                        (x[-1], result.effects.iloc[-1]),
+                        width=27,
+                        fontsize=6.8,
+                        url=benchmark.source_url,
+                    )
             display_name = (labels or {}).get(name, name)
             letter = chr(65 + position) if position < 26 else str(position + 1)
             title_artist = ax.set_title(
@@ -973,6 +1342,7 @@ def plot_effects(
             axes[row, col].set_visible(False)
         shared_label = fig.supylabel(ylabel, fontsize=9)
         fig._pysynth_body_y_label = (shared_label, tuple(axes.flat))
+        fig._pysynth_body_y_label_text = ylabel
         _finish_figure(fig)
         return fig, axes
 
@@ -988,6 +1358,7 @@ def plot_comparison(
     figsize: tuple | None = None,
     benchmark: LiteratureBenchmark | None = None,
     references: Sequence[ReferenceComparison] | None = None,
+    reference_style: str = "direct",
     note: str
     | None = "Dots are point estimates, without confidence intervals. Pretreatment RMSE describes fit, not causal credibility.",
 ):
@@ -1001,10 +1372,17 @@ def plot_comparison(
     on the ATT axis only. Its averaging window must match the full post-period.
     ``references`` adds paired source/result values instead; a source diamond
     is drawn only beside its exact fitted method and on the same ATT window.
+    Direct annotations are the default; absent historical fits get separate
+    labelled rows without changing the input mapping. ``reference_style="strip"``
+    restores the table above the axes without adding historical rows.
     """
+    _annotation_style(reference_style)
     table = _estimates(estimates)
     _validate_benchmark(benchmark, next(iter(estimates.values())))
     references = _plot_references(references, next(iter(estimates.values())), benchmark)
+    if reference_style == "direct":
+        estimates = _reference_fits(estimates, references)
+        table = _estimates(estimates)
     with publication_style():
         from matplotlib.ticker import FuncFormatter, MaxNLocator
 
@@ -1014,18 +1392,29 @@ def plot_comparison(
                 7.2,
                 1.55
                 + 0.31 * len(table)
-                + (0.75 if benchmark else 0)
-                + (0.4 + 0.85 * len(references) if references else 0),
+                + (
+                    sum(0.25 + 0.12 * _reference_lines(ref) for ref in references)
+                    if reference_style == "direct"
+                    else 0
+                )
+                + (0.75 if benchmark and reference_style == "strip" else 0)
+                + (
+                    0.4 + 0.85 * len(references) if references and reference_style == "strip" else 0
+                ),
             ),
             title,
             subtitle,
-            note,
-            benchmark,
-            references,
+            _direct_note(note, references, benchmark) if reference_style == "direct" else note,
+            benchmark if reference_style == "strip" else None,
+            references if reference_style == "strip" else (),
         )
         grid = body.subgridspec(1, 2, width_ratios=[1.2, 1], wspace=0.15)
         axes = np.array([fig.add_subplot(grid[0]), fig.add_subplot(grid[1])])
-        y = np.arange(len(table))
+        y = np.arange(len(table), dtype=float)
+        if reference_style == "direct":
+            for row, result in enumerate(estimates.values()):
+                extra = sum(_reference_spacing(ref) for ref in references if ref.estimate is result)
+                y[row + 1 :] += extra
         display = [fill(str((labels or {}).get(name, name)), width=26) for name in table.index]
         palette = [(colors or {}).get(name, BLUE) for name in table.index]
         for ax, metric, heading in zip(
@@ -1037,7 +1426,20 @@ def plot_comparison(
             ax.set_yticks(y, display if metric == "att" else [""] * len(y))
             ax.tick_params(axis="y", length=0, pad=10, labelsize=8.5, labelcolor=INK)
             ax.tick_params(axis="x", length=3, width=0.6)
-            ax.set_ylim(len(table) - 0.5, -0.5)
+            ax.set_ylim(
+                y[-1]
+                + 0.7
+                + (
+                    sum(
+                        _reference_spacing(ref)
+                        for ref in references
+                        if ref.estimate is list(estimates.values())[-1]
+                    )
+                    if reference_style == "direct"
+                    else 0
+                ),
+                -0.5,
+            )
             ax.grid(axis="y", color=GRID, linewidth=0.6)
             ax.axvline(0, color=MUTED, linewidth=0.8, zorder=2)
             ax.scatter(
@@ -1051,9 +1453,15 @@ def plot_comparison(
                 label=metric,
                 clip_on=False,
             )
-            for value, row in zip(values, y):
+            for result, value, row in zip(estimates.values(), values, y):
+                matching = _matched_references(references, result, full_window=True)
+                label = (
+                    _reference_number(value, max(ref.precision for ref in matching))
+                    if metric == "att" and matching and reference_style == "direct"
+                    else _number(value)
+                )
                 ax.annotate(
-                    _number(value),
+                    label,
                     (value, row),
                     xytext=(7, 0),
                     textcoords="offset points",
@@ -1068,7 +1476,7 @@ def plot_comparison(
                     for ref in _matched_references(references, result, full_window=True):
                         ax.scatter(
                             [ref.reference],
-                            [row],
+                            [y[row]],
                             s=36,
                             marker="D",
                             facecolors="none",
@@ -1078,6 +1486,42 @@ def plot_comparison(
                             label=f"{ref.source_label}: {ref.label}",
                         )
                         low, high = min(low, ref.reference), max(high, ref.reference)
+            if metric == "att" and reference_style == "direct":
+                numbers = _source_numbers(references)
+                for row, result in enumerate(estimates.values()):
+                    offset = 12
+                    for ref in (r for r in references if r.estimate is result):
+                        compact = ref in _matched_references(references, result, full_window=True)
+                        text = _reference_text(
+                            ref, numbers[(ref.citation, ref.source_url)], compact=compact
+                        )
+                        artist = ax.annotate(
+                            text,
+                            (result.att, y[row]),
+                            xytext=(7, -offset),
+                            textcoords="offset points",
+                            va="top",
+                            ha="left",
+                            fontsize=7,
+                            color=LITERATURE,
+                            linespacing=1.2,
+                            bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.6},
+                        )
+                        artist.set_in_layout(False)
+                        fig._pysynth_row_annotations = getattr(
+                            fig, "_pysynth_row_annotations", []
+                        ) + [(artist, text)]
+                        artist.set_url(ref.source_url)
+                        offset += len(text.splitlines()) * 7 * 1.2 + 6
+                if benchmark is not None:
+                    _callout(
+                        ax,
+                        f"{benchmark.label}: {benchmark.headline}",
+                        (table.att.iloc[0], y[0]),
+                        width=30,
+                        fontsize=7,
+                        url=benchmark.source_url,
+                    )
             if metric == "att" and benchmark is not None and benchmark.value is not None:
                 ax.axvline(
                     benchmark.value,
