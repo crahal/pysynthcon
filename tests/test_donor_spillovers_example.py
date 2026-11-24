@@ -6,7 +6,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pysynth import DifferenceInDifferences, Panel, SyntheticControl, backtest, donor_sensitivity
+from pysynth import (
+    DifferenceInDifferences,
+    Panel,
+    SyntheticControl,
+    backtest,
+    conformal_test,
+    donor_sensitivity,
+)
 
 nbformat = pytest.importorskip("nbformat")
 
@@ -23,8 +30,9 @@ def design():
         "DifferenceInDifferences": DifferenceInDifferences,
         "donor_sensitivity": donor_sensitivity,
         "backtest": backtest,
+        "conformal_test": conformal_test,
     }
-    for identifier in ("generate-panel", "paired-fits"):
+    for identifier in ("generate-panel", "paired-fits", "conformal-paired-draw"):
         exec(compile(cells[identifier], f"{notebook.name}#{identifier}", "exec"), ns)
     return ns
 
@@ -51,4 +59,17 @@ def test_both_refits_match_did_spillover_identity(design):
     np.testing.assert_allclose(rows.xs("Distant only", level="donor_pool").paired_att_shift, 0)
     np.testing.assert_allclose(
         rows.paired_att_shift, -design["SPILLOVER"] * rows.neighbor_weight, atol=1e-9, rtol=0
+    )
+
+
+def test_conformal_paired_design_recovers_the_same_distant_donor_tests(design):
+    rows = pd.DataFrame(design["test_effect_paths"](72, 1))
+    assert len(rows) == 8
+    assert set(rows.null_effect) == {0, design["TRUE_ATT"]}
+    assert (rows.n_rotations == design["N_PRE"] + design["N_POST"]).all()
+    np.testing.assert_array_equal(rows.rejected, rows.p_value <= design["ALPHA"])
+    distant = rows[rows.donor_pool == "Distant only"].set_index(["regime", "null_effect"])
+    np.testing.assert_array_equal(
+        distant.loc["No spillover", ["statistic", "p_value"]],
+        distant.loc["Spillover", ["statistic", "p_value"]],
     )
