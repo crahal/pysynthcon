@@ -1,9 +1,11 @@
 """Download immutable academic example datasets using requests."""
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
 import pandas as pd
 import requests
@@ -27,6 +29,8 @@ class Dataset:
     separator: str = ","
     start: int | None = None
     excluded_controls: tuple = ()
+    reader: Callable[[bytes], pd.DataFrame] | None = None
+    extension: str = "csv"
 
     def panel(self, frame: pd.DataFrame) -> Panel:
         """Build the common-comparison panel, retaining original outcome units."""
@@ -50,8 +54,56 @@ class Dataset:
         )
 
 
+def _read_smoking(content):
+    frame = pd.read_stata(BytesIO(content))
+    frame["state"] = frame["state"].astype(str)
+    frame["year"] = frame["year"].astype(int)
+    return frame.astype(
+        dict.fromkeys(["cigsale", "lnincome", "age15to24", "retprice", "beer"], float)
+    )
+
+
+def _read_rhode_island(content):
+    with ZipFile(BytesIO(content)) as archive:
+        with archive.open("online_supplements/replication_package_final/logfemrate.txt") as handle:
+            wide = pd.read_csv(handle, sep="\t")
+    # The supplement identifies only V1. Keep V2–V51 as supplied rather
+    # than assigning state names from an assumed ordering.
+    if list(wide.columns) != [f"V{i}" for i in range(1, 52)] or len(wide) != 25:
+        raise ValueError("Expected the authors' 25 years and 51 outcome columns")
+    wide = wide.rename(columns={"V1": "Rhode Island"})
+    wide.insert(0, "year", range(1985, 2010))
+    return wide.melt(id_vars="year", var_name="unit", value_name="log_rate")
+
+
 _PYSYNCON = "https://raw.githubusercontent.com/sdfordham/pysyncon/b77dc20e29b012ab03ca1d4caeef7b41861e86f5/data/"
 DATASETS = {
+    "california_tobacco": Dataset(
+        "california_tobacco",
+        "https://raw.githubusercontent.com/j-hai/synth-stata/ae99fd1ed100e8f5ea38386f18f02e61a90956e6/s/smoking.dta",
+        "3a9b6ead5803a86b0f22adc3fb71fac5ed2a8eba6620f745660a520acf3d68b5",
+        "state",
+        "year",
+        "cigsale",
+        "California",
+        1989,
+        "Abadie, Diamond & Hainmueller (2010), doi:10.1198/jasa.2009.ap08746",
+        reader=_read_smoking,
+        extension="dta",
+    ),
+    "rhode_island": Dataset(
+        "rhode_island",
+        "https://ndownloader.figshare.com/files/27702607",
+        "7fbd58f979a853af929e2ea1cf2c1cb22c94dcf5f075788a60ace8146b0fc4ff",
+        "unit",
+        "year",
+        "log_rate",
+        "Rhode Island",
+        2004,
+        "Chernozhukov, Wüthrich & Zhu (2021), doi:10.1080/01621459.2021.1920957; data from Cunningham & Shah (2018)",
+        reader=_read_rhode_island,
+        extension="zip",
+    ),
     "california": Dataset(
         "california",
         "https://raw.githubusercontent.com/synth-inference/synthdid/70c1ce3eac58e28c30b67435ca377bb48baa9b8a/data/california_prop99.csv",
@@ -105,7 +157,7 @@ DATASETS = {
 def load_dataset(
     name: str, *, cache_dir: str | Path | None = None, timeout: float = 30
 ) -> pd.DataFrame:
-    """Fetch a pinned CSV, check SHA256 and schema, then return a DataFrame.
+    """Fetch pinned study bytes, check SHA256 and schema, and return a DataFrame.
 
     Every uncached call uses ``requests.get`` with an explicit timeout and
     ``raise_for_status``. Optional disk caches are also verified on every read;
@@ -118,7 +170,11 @@ def load_dataset(
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     spec = DATASETS[name]
-    path = None if cache_dir is None else Path(cache_dir) / f"{name}-{spec.sha256[:12]}.csv"
+    path = (
+        None
+        if cache_dir is None
+        else Path(cache_dir) / f"{name}-{spec.sha256[:12]}.{spec.extension}"
+    )
     if path is not None and path.exists():
         content = path.read_bytes()
     else:
@@ -128,7 +184,9 @@ def load_dataset(
     actual = hashlib.sha256(content).hexdigest()
     if actual != spec.sha256:
         raise ValueError(f"Checksum mismatch for {name}: expected {spec.sha256}, got {actual}")
-    frame = pd.read_csv(BytesIO(content), sep=spec.separator)
+    frame = (
+        spec.reader(content) if spec.reader else pd.read_csv(BytesIO(content), sep=spec.separator)
+    )
     required = {spec.unit, spec.time, spec.outcome}
     if not required <= set(frame.columns):
         raise ValueError(f"Invalid dataset schema: missing {required - set(frame.columns)}")

@@ -4,7 +4,7 @@ recursive-include docs *.md *.rst *.py
 include docs/assets/pysynthcon-header.svg docs/assets/pysynthcon-header-compact.svg
 prune docs/_build
 include empirical_examples/basque.ipynb empirical_examples/california.ipynb
-include empirical_examples/germany.ipynb empirical_examples/kansas.ipynb
+include empirical_examples/germany.ipynb empirical_examples/kansas.ipynb empirical_examples/rhode_island.ipynb
 include simulated_examples/donor_spillovers.ipynb
 prune outputs
 prune empirical_examples/figures

@@ -20,6 +20,7 @@ EXAMPLES = {
     "california": "empirical_examples",
     "germany": "empirical_examples",
     "kansas": "empirical_examples",
+    "rhode_island": "empirical_examples",
     "donor_spillovers": "simulated_examples",
 }
 
