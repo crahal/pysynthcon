@@ -8,6 +8,8 @@ estimator, inspect its `Estimate`, and compare results on the same sample.
 :maxdepth: 2
 
 getting-started
+differentiation
+evaluation
 data
 methods
 inference

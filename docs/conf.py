@@ -8,4 +8,5 @@ exclude_patterns = ["_build"]
 autodoc_member_order = "bysource"
 autodoc_typehints = "description"
 myst_enable_extensions = ["dollarmath", "colon_fence"]
+myst_heading_anchors = 3
 html_static_path = []

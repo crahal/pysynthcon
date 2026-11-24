@@ -275,12 +275,21 @@ annotations on the parent figure instead.
 ## Reproduce the notebook figures
 
 Each academic notebook saves a reference path, an ATT/RMSE comparison, an
-effect-panel figure, and the comparison and source-check values as CSV under
+effect-panel figure, a validation figure and a donor-sensitivity figure,
+plus comparison and source-check values as CSV under
 `empirical_examples/figures/<example>/`. These generated files stay local and
 are excluded from version control and source distributions. The committed
-notebooks embed all three figures and print the local export paths; rerun them
+notebooks embed all five figures and print the local export paths; rerun them
 to create PDF, SVG and PNG files. The historical reference figure is explicitly
 separate from the common-comparison specifications.
+
+`plot_backtest(validation)` displays pooled held-out RMSE beside all fold
+scores on a common color scale. `plot_donor_sensitivity(sensitivity)` displays
+baseline and exclusion estimates, their scenario range and the largest
+absolute ATT change. Both accept `title`, `units`, `labels`, `figsize` and
+`note`; both return a Figure and two editable Axes. Neither invents confidence
+intervals or attributes these new diagnostics to a paper's published results.
+See the [evaluation guide](evaluation.md) for complete examples.
 
 ```bash
 python scripts/execute_notebooks.py

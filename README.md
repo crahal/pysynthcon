@@ -9,6 +9,13 @@ It builds on [pysyncon](https://github.com/sdfordham/pysyncon) and
 with the original R fitting procedures for SCUL and ISC, and a validated
 Python implementation of the original SDID algorithms.
 
+Beyond fitting individual estimators, PySynth provides a common workflow for
+pretreatment model validation, donor and donor-group sensitivity, and direct
+comparisons with academic reference results. These tools retain each model's
+full fitting settings and make the specification choices visible. See
+[what PySynth adds](docs/differentiation.md) for its relationship to pysyncon,
+SyntheticControlMethods and other causal-analysis packages.
+
 This is a research-oriented **0.1.0** release. It supports balanced panels,
 explicit donor pools, one treatment onset per panel, and case-specific panels
 for individual synthetic control. Effects are always observed minus estimated
@@ -102,7 +109,7 @@ For individual-specific timing, build one eligible panel per case and use
 | `SyntheticControl()` | Convex outcome-matching SCM | Equal importance for every pre-period; optional ridge penalty |
 | `SCUL()` | Synthetic Control Using Lasso | Rolling-origin selection; signed weights and intercept |
 | `IndividualSC()` | Individual Synthetic Control (ISC) | Full eligible donor pool; donor resampling and event-time aggregation |
-| `TwoStageIndividualSC(n_neighbors=10)` | Two-Stage Individual Synthetic Control (2SISC) | Nearest-neighbor donor screening, followed by ISC within that group |
+| `TwoStageIndividualSC(n_neighbors=10)` | Two-Stage Individual Synthetic Control (2SISC) | Nearest-neighbor screening and the authors' mean-predictor SCM fit |
 | `SyntheticDID()` | Synthetic difference-in-differences | Native R-reference algorithm; simultaneous treated blocks |
 | `DifferenceInDifferences()` | DID comparison | Uniform unit and time weights |
 | `PySyncon("synth")` | Classical predictor-based SCM | Optional `pysyncon.Dataprep` for published specifications |
@@ -115,12 +122,43 @@ For individual-specific timing, build one eligible panel per case and use
 See [method definitions](docs/methods.md) and [backend details](docs/backends.md).
 Vanilla ISC uses every eligible donor in each individual's panel. 2SISC first
 selects up to `n_neighbors` donors using pretreatment Euclidean distance, then
-fits the synthetic-control weights within that group. Both use MSCMT and 50 donor resamples by default, and support event-time
-aggregation. To migrate the initial API,
+fits the synthetic-control weights within that group. ISC uses MSCMT and 50
+donor resamples; 2SISC follows the authors' pysyncon mean-predictor specification
+without donor resampling. Both support event-time aggregation. The two-stage
+approach is credited to
+[Petrillo et al. (2025)](https://eprints.whiterose.ac.uk/id/eprint/224118/1/Binder2025004.pdf);
+the method guide documents the donor-count convention and remaining study
+replication limits. The earlier 2SISC variant remains available through
+`backend="mscmt", n_bootstrap=50`. To migrate the initial API,
 replace `IndividualSC(n_neighbors=k)` with `TwoStageIndividualSC(n_neighbors=k)`.
 The [individual-method guide](docs/methods.md#individual-synthetic-control-isc)
 describes the reference algorithms and the survey-specific choices needed
 for a study replication.
+
+## Select and stress-test a specification
+
+Compare candidates on common held-out pretreatment periods, then refit the
+selected candidate using the complete panel. Candidate factories create fresh
+models for each fit. This example runs entirely in Python:
+
+```python
+from pysynth import SyntheticControl, SyntheticDID, select_estimator, donor_sensitivity
+
+estimators = {"SCM": SyntheticControl, "SDID": SyntheticDID}
+selection = select_estimator(panel, estimators, initial_window=12, horizon=4)
+print(selection.validation.summary)
+print(selection.selected_name, selection.estimate.att)
+
+sensitivity = donor_sensitivity(panel, estimators)  # full donor-deletion refits
+print(sensitivity.summary)
+```
+
+Actual post-treatment observations are excluded from selection, and held-out
+treated outcomes are masked before fitting. Named donor-group exclusions are
+also supported. Lower prediction error and stable donor sensitivity are useful
+diagnostics; they do not establish causal validity. See the
+[comparison workflows](docs/differentiation.md) for 2SISC neighbor tuning,
+interpretation and related software.
 
 ## Empirical notebooks
 
@@ -168,8 +206,10 @@ save_figure(fig, "figures/california-effects")
 ```
 
 See the embedded figures in the [California notebook](empirical_examples/california.ipynb).
-Every notebook displays three figures with **source / reproduction / difference**
-annotations using matching specifications and periods. Rerunning a notebook
+Every notebook displays three reference/comparison figures with **source /
+reproduction / difference** annotations using matching specifications and periods,
+plus two new figures for pretreatment validation and donor-exclusion sensitivity.
+Rerunning a notebook
 creates local PDF, SVG and PNG exports, CSVs of source comparisons and estimates,
 and fitting diagnostics. Generated files stay outside version control.
 Each notebook also runs the original SDID placebo variance procedure with 200
@@ -180,6 +220,8 @@ identify the post-period.
 ## Documentation and development
 
 - [User guide and data preparation](docs/data.md)
+- [What PySynth adds and related software](docs/differentiation.md)
+- [Pretreatment validation, selection and donor sensitivity](docs/evaluation.md)
 - [Estimator equations and assumptions](docs/methods.md)
 - [Placebo diagnostics and inference](docs/inference.md)
 - [Publication plotting and export](docs/plotting.md)

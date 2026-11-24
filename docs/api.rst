@@ -45,6 +45,18 @@ Inference
 .. automodule:: pysynth.inference
    :members:
 
+Validation, selection and sensitivity
+----------------------------------------
+
+.. automodule:: pysynth.validation
+   :members: backtest, select_estimator, BacktestResult, SelectionResult
+
+.. automodule:: pysynth.sensitivity
+   :members: donor_sensitivity, DonorSensitivityResult
+
+.. automodule:: pysynth.evaluation_plotting
+   :members: plot_backtest, plot_donor_sensitivity
+
 Data and replications
 ---------------------
 
