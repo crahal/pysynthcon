@@ -10,10 +10,13 @@ from .backends import (
     RobustSyntheticControl,
 )
 from .classic import SyntheticControl
+from .conformal import ConformalResult, conformal_confidence_set, conformal_test
+from .conformal_plotting import plot_conformal_set
 from .evaluation_plotting import plot_backtest, plot_donor_sensitivity
 from .individual import IndividualEstimate, IndividualSC, TwoStageIndividualSC
 from .inference import PlaceboResult, placebo_test
 from .panel import Panel
+from .placebo_plotting import plot_placebo_gaps
 from .plotting import (
     LiteratureBenchmark,
     ReferenceComparison,
@@ -54,6 +57,11 @@ __all__ = [
     "compare",
     "placebo_test",
     "PlaceboResult",
+    "ConformalResult",
+    "conformal_test",
+    "conformal_confidence_set",
+    "plot_placebo_gaps",
+    "plot_conformal_set",
     "plot_paths",
     "plot_effects",
     "plot_comparison",
