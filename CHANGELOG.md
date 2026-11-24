@@ -5,6 +5,18 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### SDID inference convergence
+
+- Add an explicit inference iteration-budget override, including when a
+  fitted estimate is supplied. Preserve original penalties, tolerance,
+  starting weights, sparsification and resampling plans.
+- Add a strict convergence option that rejects unresolved resampled fits;
+  report capped draws by weight type and retain objective-decrease thresholds,
+  terminal decreases, dual gaps and iteration budgets in diagnostics.
+- Make iteration-limit warnings actionable. Keep exact original-cap
+  replication and compare it with a complete extended-budget run in every
+  notebook, showing standard-error changes and exporting draw-level diagnostics.
+
 ### Comparative research workflows
 
 - Add common expanding-window pretreatment validation across estimator

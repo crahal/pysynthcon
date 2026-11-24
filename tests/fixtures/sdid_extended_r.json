@@ -1,0 +1,146 @@
+{
+  "source": "synth-inference/synthdid@70c1ce3eac58e28c30b67435ca377bb48baa9b8a, R 4.6.2; identical explicit resamples in both runtimes",
+  "protocol": "Original R synthdid point fit with max.iter=10000; inference refits with max.iter=1000000, original fitted penalties and warm-start weights, default sparsification and stopping tolerance. First three explicit bootstrap and placebo resamples from sdid_inference_r.json. Solver diagnostics read from original returned objective traces; source unmodified.",
+  "r_version": "R version 4.6.2 (2026-10-29)",
+  "input_fixture": "sdid_inference_r.json",
+  "input_fixture_sha256": "6368a95197e83ce6ff49a0e8482803b734315785985b4df3a615f56033091b01",
+  "source_sha256": {
+    "solver.R": "a5288977994babd70b3816c3a677becb96574028d627924fec880bdd8bb7f584",
+    "utils.R": "f90bc2da5958a33a7de3b4e1f2eebeeb7b71faf3b16730a2f4d4b1e42847efb0",
+    "synthdid.R": "ebc3339dca7626bdb543f2a566c2e4710468f6b0cacc30b36e31eaee3a8ef5a4",
+    "vcov.R": "72e55c43b90433c2262577f44b2867c8560b2fed8b2bdc863a53795e7db76810"
+  },
+  "original_max_iter": 10000,
+  "max_iter": 1000000,
+  "att": -3.1201608482946241,
+  "omega": [0.13608125788756478, 0.14207945542202466, 0.060551829071907336, 0.15139203962794093, 0.098103599362818122, 0.41179181862774422],
+  "lambda": [0, 0, 0, 0, 0, 0.052342095364553622, 0, 0, 0, 0.94765790463544641],
+  "settings": {
+    "zeta.omega": 1.5444373211369173,
+    "zeta.lambda": 7.4981161132967442e-07,
+    "omega.intercept": true,
+    "lambda.intercept": true,
+    "update.omega": true,
+    "update.lambda": true,
+    "min.decrease": 7.498116113296745e-06,
+    "max.iter": 1000000
+  },
+  "bootstrap_resamples": [
+    [0, 2, 2, 3, 5, 5, 6, 6, 7],
+    [0, 3, 3, 5, 5, 5, 6, 6, 6],
+    [0, 2, 3, 3, 5, 6, 6, 7, 8]
+  ],
+  "placebo_resamples": [
+    [5, 2, 3, 0, 4, 1],
+    [5, 1, 4, 2, 3, 0],
+    [5, 4, 2, 1, 0, 3]
+  ],
+  "bootstrap": {
+    "draws": [-2.6777319590787858, -5.2159908015465914, -3.1358371428581431],
+    "variance": 1.2199619505029402,
+    "solver_diagnostics": [
+      {
+        "omega": {
+          "iterations": 74,
+          "max_iter": 1000000,
+          "objective_decrease": 4.4889092443156642e-11,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        },
+        "lambda": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": -8.8817841970012523e-16,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        }
+      },
+      {
+        "omega": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": 2.8063107393450082e-11,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        },
+        "lambda": {
+          "iterations": 123992,
+          "max_iter": 1000000,
+          "objective_decrease": 5.6221395594580059e-11,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        }
+      },
+      {
+        "omega": {
+          "iterations": 3,
+          "max_iter": 1000000,
+          "objective_decrease": 3.1121882848594851e-11,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        },
+        "lambda": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": 2.2203350269478506e-11,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        }
+      }
+    ]
+  },
+  "placebo": {
+    "draws": [2.2664763539666701, -0.8358689008003265, 1.6982668584884038],
+    "variance": 1.8188057952258707,
+    "solver_diagnostics": [
+      {
+        "omega": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": 1.2190248810384219e-12,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        },
+        "lambda": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": 0,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        }
+      },
+      {
+        "omega": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": 2.351163708169679e-11,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        },
+        "lambda": {
+          "iterations": 45,
+          "max_iter": 1000000,
+          "objective_decrease": 4.8604836151254077e-11,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        }
+      },
+      {
+        "omega": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": 6.5358829459682966e-13,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        },
+        "lambda": {
+          "iterations": 2,
+          "max_iter": 1000000,
+          "objective_decrease": 0,
+          "threshold": 5.6221745248480287e-11,
+          "stopping_rule_met": true
+        }
+      }
+    ]
+  }
+}

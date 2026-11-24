@@ -37,8 +37,9 @@ def _fw(x, y, zeta, initial, max_iter, min_decrease, intercept=True):
         w += step * direction
         error = x @ w - y
         value = zeta**2 * (w @ w) + error @ error / len(y)
+        decrease = previous - value
         # Upstream always executes at least two iterations.
-        if iteration >= 1 and previous - value <= min_decrease**2:
+        if iteration >= 1 and decrease <= min_decrease**2:
             converged = True
             break
         previous = value
@@ -48,6 +49,10 @@ def _fw(x, y, zeta, initial, max_iter, min_decrease, intercept=True):
         "objective": float(value),
         "dual_gap": float(gradient @ w - gradient.min()),
         "stopping_rule_met": converged,
+        "last_objective_decrease": float(decrease),
+        "stopping_threshold": float(min_decrease**2),
+        "max_iter": int(max_iter),
+        "termination_reason": "objective_decrease" if converged else "max_iter",
     }
 
 
@@ -120,7 +125,9 @@ class SyntheticDID:
             )
             if warn and not info["stopping_rule_met"]:
                 warnings.warn(
-                    "SDID reached max_iter before the objective-decrease stopping rule",
+                    f"SDID reached max_iter ({settings['max_iter']}) before the "
+                    "objective-decrease stopping rule; increase SyntheticDID(max_iter=...) "
+                    "and inspect the fitted estimate's omega_solver/lambda_solver metadata",
                     RuntimeWarning,
                     stacklevel=3,
                 )
@@ -184,13 +191,16 @@ class SyntheticDID:
         random_state=None,
         estimate: Estimate | None = None,
         resamples=None,
+        max_iter: int | None = None,
+        require_convergence: bool = False,
     ) -> "SDIDInference":
         """Author-software versions of Algorithms 2–4 for no-covariate SDID.
 
         Bootstrap samples all units with replacement and rejects samples missing
         either treatment group. Placebo randomly partitions the original controls
         into pseudo-controls and pseudo-treated units. Both fully re-estimate
-        donor and time weights, retain original penalties and stopping settings,
+        donor and time weights, retain original penalties and stopping settings
+        unless ``max_iter`` explicitly extends the final-stage iteration budget,
         and warm-start as in R synthdid. Jackknife leaves each unit out and keeps
         normalized fitted weights fixed. Its variance centers on the mean of
         leave-one-out estimates, matching R ``synthdid``; literal Algorithm 3
@@ -200,9 +210,34 @@ class SyntheticDID:
         index vectors, enabling draw-for-draw comparison with another runtime.
         Random seeds alone do not yield identical draws between NumPy and R.
         For one treated unit only placebo inference is defined.
+
+        With ``estimate`` supplied, the default budget is inherited from that
+        fit, irrespective of this object's ``max_iter``. Pass ``max_iter`` here
+        to extend the resample budget; it must be at least the inherited budget.
+        The original point fit, penalties, tolerance, sparsification and starting
+        weights remain unchanged. This can differ from the finite-iteration
+        reference result. ``max_iter`` is unavailable for fixed-weight jackknife.
+
+        ``require_convergence=True`` raises if any resample weight fit reaches
+        its budget before satisfying the original objective-decrease rule.
+        It checks only resample weight fits, not the original point fit, and
+        does not certify global optimality. By default capped draws are retained
+        with a warning, matching the reference estimates. Metadata records the
+        inherited/effective budgets, capped counts and every solver diagnostic.
         """
         if method not in {"bootstrap", "jackknife", "placebo"}:
             raise ValueError("method must be 'bootstrap', 'jackknife', or 'placebo'")
+        if not isinstance(require_convergence, (bool, np.bool_)):
+            raise ValueError("require_convergence must be a boolean")
+        if max_iter is not None:
+            if method == "jackknife":
+                raise ValueError("max_iter is unavailable for fixed-weight jackknife inference")
+            if (
+                isinstance(max_iter, (bool, np.bool_))
+                or not isinstance(max_iter, (int, np.integer))
+                or max_iter < 2
+            ):
+                raise ValueError("max_iter must be an integer >= 2")
         if method != "jackknife" and (
             isinstance(replications, (bool, np.bool_))
             or not isinstance(replications, (int, np.integer))
@@ -232,6 +267,11 @@ class SyntheticDID:
             key: fitted.metadata[key]
             for key in ("noise", "zeta_omega", "zeta_lambda", "min_decrease", "max_iter")
         }
+        original_max_iter = settings["max_iter"]
+        if max_iter is not None:
+            if max_iter < original_max_iter:
+                raise ValueError("max_iter must be at least the original fit's iteration budget")
+            settings["max_iter"] = int(max_iter)
         omega, lam = fitted.weights.to_numpy(), fitted.time_weights.to_numpy()
         if any(
             not np.isfinite(weights).all()
@@ -314,10 +354,22 @@ class SyntheticDID:
             not (info["omega"]["stopping_rule_met"] and info["lambda"]["stopping_rule_met"])
             for info in convergence
         )
+        capped_solvers = {
+            side: sum(not info[side]["stopping_rule_met"] for info in convergence)
+            for side in ("omega", "lambda")
+        }
         if capped:
+            message = (
+                f"SDID inference: {capped} of {len(values)} draws reached max_iter "
+                f"({settings['max_iter']}) before the objective-decrease stopping rule "
+                f"(omega: {capped_solvers['omega']}, lambda: {capped_solvers['lambda']}). "
+                "Increase the resample budget explicitly with inference(max_iter=...); "
+                "with estimate=..., the default budget is inherited from that fit."
+            )
+            if require_convergence:
+                raise RuntimeError(message)
             warnings.warn(
-                f"SDID inference: {capped} of {len(values)} draws reached max_iter before "
-                "the objective-decrease stopping rule; inspect solver_diagnostics",
+                message + " Inspect metadata['solver_diagnostics'] for the stopping details.",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -340,6 +392,11 @@ class SyntheticDID:
                 ),
                 "settings": settings,
                 "solver_diagnostics": convergence,
+                "original_max_iter": original_max_iter,
+                "max_iter": settings["max_iter"],
+                "capped_draws": capped,
+                "capped_solvers": capped_solvers,
+                "require_convergence": bool(require_convergence),
             },
         )
 

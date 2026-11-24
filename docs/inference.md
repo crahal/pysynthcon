@@ -15,7 +15,8 @@ from pysynth import SyntheticDID
 model = SyntheticDID()
 estimate = model.fit(panel)
 uncertainty = model.inference(
-    panel, estimate=estimate, method="placebo", replications=200, random_state=0
+    panel, estimate=estimate, method="placebo", replications=200, random_state=0,
+    max_iter=1_000_000, require_convergence=True,
 )
 print(estimate.att, uncertainty.standard_error)
 print(uncertainty.confidence_interval(level=0.95))
@@ -53,6 +54,42 @@ is 10,000 iterations. A draw reaching that limit remains available, as it does i
 R; the Python API reports one warning with the number of affected draws and keeps
 complete convergence diagnostics in `uncertainty.metadata["solver_diagnostics"]`.
 The original penalties are not recalculated from each resample.
+
+### Handling iteration-limit warnings
+
+The original reference algorithm can reach its 10,000-iteration cap before
+meeting its objective-decrease stopping rule. This is a genuine numerical
+limit, not a failed resampling plan. R returns those fits silently; PySynth
+reports the number of affected draws and which weight fits reached the cap.
+
+Use the **inference keyword** `max_iter=1_000_000`, as in the example above,
+to extend the final-stage budget. This leaves the objective, penalties,
+tolerance, initial weights and 100-step sparsification stage unchanged.
+It accepts only an increase from the supplied estimate's budget. When an
+existing `estimate` is supplied, constructing `SyntheticDID(max_iter=...)`
+alone does not change its inherited inference settings; the explicit keyword
+avoids that ambiguity. Jackknife has no iterative refits and rejects the override.
+
+`require_convergence=True` raises if any resampled weight fit still reaches
+the cap. It never discards a draw or returns a partial standard error. The
+default remains `False` for compatibility with the authors' finite-iteration
+reference output. A million iterations is a budget, not a guarantee: inspect
+the result or increase it further if the strict check fails. Meeting the
+original objective-decrease rule is not a certificate of global optimality.
+
+The result records `original_max_iter`, `max_iter`, `capped_draws` and
+`capped_solvers`. Each draw's two solver records include iterations, objective,
+last objective decrease, threshold, dual gap and termination reason. Export
+them with `pandas.json_normalize(uncertainty.metadata["solver_diagnostics"])`.
+
+For a numerical sensitivity comparison, replay the exact `resamples` from
+the original-cap run with the larger budget. The point estimate remains
+fixed; the strict check concerns resampled weights. A higher-budget point
+fit is a separate `SyntheticDID(max_iter=...).fit(panel)` call. The notebooks
+show original-cap and extended-cap standard errors side by side and require
+all 200 draws of the extended run to meet the original stopping criterion.
+The extended result is explicitly separate from exact finite-iteration
+replication of the paper software.
 
 `uncertainty.draws` contains every resampled ATT, and `uncertainty.resamples`
 contains the zero-based unit indices. Passing those indices back through
@@ -112,6 +149,12 @@ number. The difference is finite-resample variation, not a different variance
 algorithm. The paper-plan standard error and every underlying draw have been
 checked independently against R; the academic integration test requires an
 absolute standard-error error below `1e-9`.
+
+`california_paper_inference` deliberately retains the authors' default cap.
+For a convergence check, pass its `resamples` to `SyntheticDID().inference`
+with `max_iter=1_000_000` and `require_convergence=True`, while retaining the
+original result for the exact reference assertion. Do not replace the
+reference target or widen its tolerance to accommodate the extended run.
 
 ## Generic in-space placebo diagnostic
 
