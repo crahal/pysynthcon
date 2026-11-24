@@ -10,6 +10,8 @@
 3. Abadie, A., Diamond, A. and Hainmueller, J. (2015). Comparative Politics and
    the Synthetic Control Method. *AJPS*, 59(2), 495–510.
    [DOI](https://doi.org/10.1111/ajps.12116).
+   [2025 erratum](https://economics.mit.edu/sites/default/files/2025-09/Comparative%20Politics%20and%20the%20Synthetic%20Control%20Method%20erratum.pdf):
+   the empirical GDP series is PPP-adjusted current US dollars.
 4. Hollingsworth, A. and Wing, C. (2020). Tactics for design and inference in
    synthetic control studies: An applied example using high-dimensional data.
    [Working paper](https://doi.org/10.31235/osf.io/fc9xt),

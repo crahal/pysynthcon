@@ -6,7 +6,42 @@ They are kept separate from the common outcome-only comparisons.
 
 from .backends import PySyncon, _require
 from .datasets import DATASETS
+from .plotting import LiteratureBenchmark
 from .sdid import SyntheticDID
+
+LITERATURE_BENCHMARKS = {
+    "california": LiteratureBenchmark(
+        headline="SDID mean effect: −15.6 packs per capita",
+        citation="Arkhangelsky et al. (2021), Table 1 · 1989–2000",
+        source_url="https://arxiv.org/pdf/1812.09970v4#page=8",
+        context="No-covariate SDID; other estimators need not match this value.",
+        value=-15.6,
+        window=(1989, 2000),
+    ),
+    "basque": LiteratureBenchmark(
+        headline="SCM: approximately 10% lower GDP per capita",
+        citation="Abadie & Gardeazabal (2003), p. 117 · 1980s–1990s",
+        source_url="https://economics.mit.edu/sites/default/files/publications/The%20Economic%20Costs%20of%20Conflict.pdf#page=5",
+        context="Proportional headline; not a dollar ATT. No numeric guide is drawn on these level-scale axes.",
+    ),
+    "germany": LiteratureBenchmark(
+        headline="SCM mean effect: approximately −1,600 US$ per capita",
+        citation="Abadie, Diamond & Hainmueller (2015), p. 504 · 1990–2003",
+        source_url="https://economics.mit.edu/sites/default/files/publications/Comparative%20Politics%20and%20the%20Synthetic%20Control.pdf#page=10",
+        context="PPP current US$ (2025 erratum). Historical covariate specification differs from comparison fits.",
+        value=-1600,
+        window=(1990, 2003),
+    ),
+    "kansas": LiteratureBenchmark(
+        headline="Ridge ASCM mean effect: −0.0401 log points",
+        citation="Ben-Michael, Feller & Rothstein · augsynth vignette · 2012 Q2–2016 Q1",
+        source_url="https://github.com/ebenmichael/augsynth/blob/7e70072232fe75057aa8b5d7af08c7e1aef53ae8/vignettes/singlesynth-vignette.md#L217",
+        context="Authors’ no-covariate worked example accompanying the 2021 paper; not its printed headline.",
+        value=-0.0401,
+        window=(2012.25, 2016.0),
+        label="Authors’ reference",
+    ),
+}
 
 
 def replicate(name, frame):

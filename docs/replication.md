@@ -11,6 +11,29 @@ ATT/pretreatment-fit summary, and shared-scale effect panels) as PDF, SVG and
 documents units, timing, scale and export conventions. Figures show point
 estimates without confidence intervals; the post-period shading denotes time.
 
+## Literature annotations
+
+All twelve figures carry a source annotation, independent of the numerical
+validation targets below. Values retain the precision and interpretation of
+their sources:
+
+| Setting | Figure annotation | Source and comparability |
+|---|---|---|
+| California | SDID mean effect −15.6 packs per capita, 1989–2000 | Arkhangelsky et al. (2021), [Table 1](https://arxiv.org/pdf/1812.09970v4#page=8); no-covariate SDID. |
+| Basque Country | Approximately 10% lower GDP per capita in the 1980s–1990s | Abadie & Gardeazabal (2003), [p. 117](https://economics.mit.edu/sites/default/files/publications/The%20Economic%20Costs%20of%20Conflict.pdf#page=5). Text only on dollar axes; this is not the 1975–1997 level-scale validation ATT. |
+| Germany | Approximately −1,600 US$ per capita annually, 1990–2003 | Abadie, Diamond & Hainmueller (2015), [p. 504](https://economics.mit.edu/sites/default/files/publications/Comparative%20Politics%20and%20the%20Synthetic%20Control.pdf#page=10). Historical covariate specification; the comparison fits differ. |
+| Kansas | Ridge ASCM mean effect −0.0401 log points, 2012 Q2–2016 Q1 | Authors' [no-covariate vignette](https://github.com/ebenmichael/augsynth/blob/7e70072232fe75057aa8b5d7af08c7e1aef53ae8/vignettes/singlesynth-vignette.md#L217), pinned at commit `7e70072232fe75057aa8b5d7af08c7e1aef53ae8`. Labelled “Authors’ reference”, not a paper-printed headline. |
+
+German GDP is in **PPP-adjusted current US dollars**, following the authors'
+[August 2025 erratum](https://economics.mit.edu/sites/default/files/2025-09/Comparative%20Politics%20and%20the%20Synthetic%20Control%20Method%20erratum.pdf).
+The original paper's constant-2002-dollar label was incorrect. The correction
+changes interpretation of levels, not the stored data or fitted estimates.
+
+The ochre dotted guides show the named source's average effect. They appear
+only on compatible ATT/effect axes, with matching post-treatment windows;
+they are neither period-specific paths nor uncertainty intervals. An effect
+from one specification is not an expected answer for every estimator.
+
 ## What each check establishes
 
 | Example | Reference specification | Numeric target | Predeclared tolerance |

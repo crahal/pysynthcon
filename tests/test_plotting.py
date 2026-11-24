@@ -9,6 +9,7 @@ import pytest
 
 from pysynth import (
     Estimate,
+    LiteratureBenchmark,
     SyntheticControl,
     plot_comparison,
     plot_effects,
@@ -228,3 +229,88 @@ def test_export_preserves_vector_canvas(tmp_path):
     canvas = FigureCanvasSVG(ax.figure)
     save_figure(ax.figure, tmp_path / "vector.svg")
     assert ax.figure.canvas is canvas
+
+
+def literature(**kwargs):
+    return LiteratureBenchmark(
+        headline="Example SCM mean effect: −20 dollars",
+        citation="Example authors (2021), Table 1",
+        source_url="https://example.org/paper",
+        context="Same units and post-period; different specifications may give different effects.",
+        **kwargs,
+    )
+
+
+def test_numeric_benchmark_is_only_on_effect_and_att_axes():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    benchmark = literature(value=-20, window=(2004, 2010))
+    ax = plot_paths(fit, benchmark=benchmark)
+    assert not any(line.get_label() == "Literature mean ATT" for line in ax.lines)
+    _, axes = plot_effects({"One": fit, "Two": fit}, benchmark=benchmark)
+    for ax in axes.flat:
+        line = next(line for line in ax.lines if line.get_label() == "Literature mean ATT")
+        np.testing.assert_array_equal(line.get_xdata(), [2004, 2010])
+        np.testing.assert_array_equal(line.get_ydata(), [-20, -20])
+        assert ax.get_ylim()[0] < -20
+    _, axes = plot_comparison({"One": fit}, benchmark=benchmark)
+    line = next(line for line in axes[0].lines if line.get_label() == "Literature mean ATT")
+    np.testing.assert_array_equal(line.get_xdata(), [-20, -20])
+    assert axes[0].get_xlim()[0] < -20
+    assert not any(line.get_label() == "Literature mean ATT" for line in axes[1].lines)
+    # Adding a published guide must not change our fitted results or summary dots.
+    np.testing.assert_allclose(axes[0].collections[0].get_offsets(), [[fit.att, 0]])
+
+
+@pytest.mark.parametrize("function", [plot_paths, plot_effects, plot_comparison])
+def test_different_benchmark_window_rejected_before_plotting(function):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    benchmark = literature(value=-20, window=(2001, 2010))
+    before = plt.get_fignums()
+    with pytest.raises(ValueError, match="window must match"):
+        function(fit if function is plot_paths else {"One": fit}, benchmark=benchmark)
+    assert plt.get_fignums() == before
+
+
+def test_text_only_benchmark_and_source_survive_export(tmp_path):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    benchmark = literature()
+    fig, axes = plot_comparison({"One": fit, "Two": fit}, benchmark=benchmark)
+    assert not any(line.get_label() == "Literature mean ATT" for ax in axes for line in ax.lines)
+    paths = save_figure(fig, tmp_path / "literature")
+    svg = paths[1].read_text()
+    assert benchmark.source_url in svg
+    assert "Published result" in svg and "Table 1" in svg
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    strip, artists, _ = fig._pysynth_benchmark_layout
+    bounds = strip.get_window_extent(renderer)
+    previous_bottom = bounds.y1
+    for artist in artists:
+        text = artist.get_window_extent(renderer)
+        assert bounds.x0 <= text.x0 < text.x1 <= bounds.x1
+        assert bounds.y0 - 2 <= text.y0 < text.y1 <= previous_bottom + 2
+        previous_bottom = text.y0
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"value": float("nan"), "window": (2004, 2010)},
+        {"value": -1},
+        {"window": (2004, 2010)},
+    ],
+)
+def test_invalid_benchmark_metadata(kwargs):
+    with pytest.raises(ValueError):
+        literature(**kwargs)
+
+
+def test_calendar_benchmark_uses_calendar_coordinates():
+    from matplotlib.dates import date2num
+
+    times = pd.date_range("2000-01-01", periods=4, freq="MS")
+    fit = example(times)
+    benchmark = literature(value=-20, window=(times[2], times[3]))
+    ax = plot_paths(fit, effects=True, benchmark=benchmark)
+    line = next(line for line in ax.lines if line.get_label() == "Literature mean ATT")
+    np.testing.assert_allclose(line.get_xdata(), date2num(times[2:].to_pydatetime()))

@@ -151,6 +151,55 @@ Styling is scoped: global Matplotlib settings are restored after each call.
 The library does not change your backend, call `show()`, or close figures.
 Importing `pysynth` does not require Matplotlib until plotting is requested.
 
+## Annotate a literature benchmark
+
+Pass a `LiteratureBenchmark` to any of the three plotting functions. The
+result appears in a separate, warm-toned source strip, with its reported
+precision, citation and specification context. Citation text links to the
+source in vector exports; notebooks also print a clickable source link.
+
+```python
+from pysynth import LiteratureBenchmark
+
+published = LiteratureBenchmark(
+    headline="SDID mean effect: −15.6 packs per capita",
+    citation="Arkhangelsky et al. (2021), Table 1 · 1989–2000",
+    source_url="https://arxiv.org/pdf/1812.09970v4#page=8",
+    context="No-covariate SDID; other specifications need not match this value.",
+    value=-15.6,
+    window=(1989, 2000),
+)
+fig, axes = plot_comparison(fits, benchmark=published, units="packs per capita")
+save_figure(fig, "figures/comparison-with-literature")
+```
+
+A numeric `value` adds a dotted guide to the ATT axis and to the post-period
+of effect paths. It is the source's **mean effect**, not an uncertainty
+interval or a published time-varying trajectory. The same annotation on an
+observed/counterfactual figure is textual: an ATT does not belong on an
+outcome-level axis. The RMSE axis never receives an ATT guide. Automatic
+effect and ATT limits include the benchmark, even when it falls outside the
+new estimates; explicit `ylim` remains a user-selected view.
+
+The caller must establish compatible outcome units, transformation and
+estimand before setting `value`. The endpoints in `window` must exactly match
+the plotted post-treatment sample; incompatible windows raise an error before
+plotting. Different predictor specifications can still be compared, but must
+be identified in `context`. These annotations do not certify replication.
+
+Omit `value` and `window` for a result in different units or over a different
+window. For example, the Basque paper's approximately 10% GDP loss is a text
+annotation on figures measured in thousands of dollars. It is not converted
+to a dollar ATT or drawn at −10. `label="Authors’ reference"` distinguishes a
+worked software example from a number printed in a journal article.
+
+`pysynth.replication.LITERATURE_BENCHMARKS` contains the sourced annotations
+used by the four notebooks. See the [benchmark provenance](replication.md)
+for page/table locators, the pinned Kansas vignette, and the German erratum.
+Default figure heights allow extra room for the source strip; explicit
+`figsize` values are respected. With a caller-supplied `ax`, place literature
+annotations on the parent figure instead.
+
 ## Reproduce the notebook figures
 
 Each academic notebook saves a reference path, an ATT/RMSE comparison, an

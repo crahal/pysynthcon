@@ -6,6 +6,7 @@ plot settings. No function estimates uncertainty or refits an estimator.
 """
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from textwrap import fill
 from typing import Mapping
@@ -20,6 +21,77 @@ BLUE = "#286A8C"
 MUTED = "#667580"
 GRID = "#E4E8EB"
 POST = "#F1F4F6"
+LITERATURE = "#87582E"
+
+
+@dataclass(frozen=True)
+class LiteratureBenchmark:
+    """A sourced literature result, separate from the estimates being plotted.
+
+    ``headline`` states the result and units; ``citation`` includes its source
+    locator. ``context`` records the method, window and specification caveats.
+    ``source_url`` links the citation in vector exports. Set ``value`` only for
+    a mean effect in the plot's outcome units, with the *same* averaging window.
+    In that case ``window`` must give the first and last post-treatment index
+    labels. Omit both for a percentage headline on a level-scale figure.
+    Numeric guides are never drawn on outcome-level or RMSE axes.
+    """
+
+    headline: str
+    citation: str
+    source_url: str
+    context: str
+    value: float | None = None
+    window: tuple | None = None
+    label: str = "Published result"
+
+    def __post_init__(self):
+        for field in ("headline", "citation", "source_url", "context", "label"):
+            if not isinstance(getattr(self, field), str) or not getattr(self, field).strip():
+                raise ValueError(f"{field} must be a nonempty string")
+        if not self.source_url.startswith(("https://", "http://")):
+            raise ValueError("source_url must be an HTTP(S) source link")
+        if self.value is not None:
+            if not np.isscalar(self.value) or not np.isfinite(self.value):
+                raise ValueError("benchmark value must be finite")
+            if self.window is None or len(self.window) != 2:
+                raise ValueError("a numeric benchmark requires a two-endpoint window")
+        elif self.window is not None:
+            raise ValueError("window is only used with a numeric benchmark")
+
+
+def _validate_benchmark(benchmark, estimate):
+    if benchmark is None:
+        return
+    if not isinstance(benchmark, LiteratureBenchmark):
+        raise TypeError("benchmark must be a LiteratureBenchmark")
+    if benchmark.value is not None:
+        index = estimate.observed.index
+        positions = index.get_indexer(benchmark.window)
+        if not np.array_equal(positions, [estimate.n_pre, len(index) - 1]):
+            raise ValueError(
+                "benchmark window must match the full post-treatment sample; "
+                "use a text-only benchmark for a different window"
+            )
+
+
+def _benchmark_effect(ax, x, n_pre, benchmark):
+    if benchmark is not None and benchmark.value is not None:
+        ax.plot(
+            [x[n_pre], x[-1]],
+            [benchmark.value, benchmark.value],
+            color=LITERATURE,
+            linewidth=1,
+            linestyle=(0, (2, 2)),
+            label="Literature mean ATT",
+            zorder=2.5,
+        )
+
+
+def _effect_limits(values, benchmark):
+    if benchmark is not None and benchmark.value is not None:
+        values = np.append(values, benchmark.value)
+    return _limits(values)
 
 
 def _matplotlib():
@@ -202,7 +274,7 @@ def _limits(values):
     return low - span * 0.08, high + span * 0.12
 
 
-def _figure_grid(figsize, title, subtitle, note):
+def _figure_grid(figsize, title, subtitle, note, benchmark=None):
     """Reserve real layout rows for headings and notes, avoiding clipped text."""
     _, plt = _matplotlib()
     width, height = figsize
@@ -217,9 +289,52 @@ def _figure_grid(figsize, title, subtitle, note):
     foot_height = 0.14 * len(wrapped_note.splitlines()) + 0.06 if note else 0.02
     fig = plt.figure(figsize=figsize, layout="constrained")
     fig.get_layout_engine().set(h_pad=0.06, w_pad=0.06, hspace=0.045, wspace=0.05)
-    outer = fig.add_gridspec(
-        3, 1, height_ratios=[head_height, max(1, height - head_height - foot_height), foot_height]
-    )
+    ratios = [head_height, max(1, height - head_height - foot_height), foot_height]
+    if benchmark is not None:
+        ratios.insert(1, 0.65)
+    outer = fig.add_gridspec(len(ratios), 1, height_ratios=ratios)
+    if benchmark is not None:
+        from matplotlib.patches import Rectangle
+
+        strip = fig.add_subplot(outer[1])
+        strip.set_axis_off()
+        strip.add_patch(
+            Rectangle(
+                (0, 0),
+                1,
+                1,
+                transform=strip.transAxes,
+                facecolor="#F7F3ED",
+                edgecolor="none",
+                zorder=0,
+            )
+        )
+        strip.plot(
+            [0, 0], [0, 1], transform=strip.transAxes, color=LITERATURE, linewidth=2, clip_on=False
+        )
+        originals = [
+            f"{benchmark.label} · {benchmark.headline}",
+            benchmark.citation,
+            benchmark.context,
+        ]
+        artists = []
+        for i, text in enumerate(originals):
+            artist = strip.text(
+                0.018,
+                1,
+                text,
+                transform=strip.transAxes,
+                va="top",
+                fontsize=8.5 if i == 0 else 7.3,
+                fontweight="semibold" if i == 0 else "normal",
+                color=LITERATURE if i == 0 else INK,
+                linespacing=1.3,
+            )
+            artist.set_in_layout(False)
+            if i == 1:
+                artist.set_url(benchmark.source_url)
+            artists.append(artist)
+        fig._pysynth_benchmark_layout = (strip, artists, originals)
     heading = fig.add_subplot(outer[0])
     heading.set_axis_off()
     title_artist = subtitle_artist = note_artist = None
@@ -245,7 +360,7 @@ def _figure_grid(figsize, title, subtitle, note):
             color=MUTED,
             linespacing=1.3,
         )
-    footer = fig.add_subplot(outer[2])
+    footer = fig.add_subplot(outer[-1])
     footer.set_axis_off()
     if wrapped_note:
         note_artist = footer.text(
@@ -272,7 +387,7 @@ def _figure_grid(figsize, title, subtitle, note):
         subtitle,
         note,
     )
-    return fig, outer[1]
+    return fig, outer[-2]
 
 
 def _wrap_measured(text, artist, renderer, width):
@@ -326,7 +441,26 @@ def _layout_captions(fig):
         heights.append(len(wrapped.splitlines()) * artist.get_fontsize() / 72 * 1.4)
     head = heights[0] + heights[1] + 0.12
     foot = heights[2] + 0.07 if note is not None else 0.02
-    outer.set_height_ratios([head, max(1, fig.get_figheight() - head - foot), foot])
+    benchmark_layout = getattr(fig, "_pysynth_benchmark_layout", None)
+    benchmark_height = 0
+    if benchmark_layout is not None:
+        strip, artists, originals = benchmark_layout
+        text_heights = []
+        for artist, original in zip(artists, originals):
+            width = strip.get_window_extent(renderer).width * 0.95
+            wrapped = _wrap_measured(original, artist, renderer, width)
+            artist.set_text(wrapped)
+            text_heights.append(len(wrapped.splitlines()) * artist.get_fontsize() / 72 * 1.4)
+        benchmark_height = sum(text_heights) + 0.18
+        offset = 0.055
+        for artist, text_height in zip(artists, text_heights):
+            artist.set_y(1 - offset / benchmark_height)
+            offset += text_height + 0.015
+    body_height = max(1, fig.get_figheight() - head - foot - benchmark_height)
+    ratios = [head, body_height, foot]
+    if benchmark_layout is not None:
+        ratios.insert(1, benchmark_height)
+    outer.set_height_ratios(ratios)
     for artist, original in getattr(fig, "_pysynth_panel_titles", []):
         width = artist.axes.get_window_extent(renderer).width * 0.98
         artist.set_text(_wrap_measured(original, artist, renderer, width))
@@ -346,8 +480,9 @@ def plot_paths(
     observed_label: str = "Observed",
     counterfactual_label: str = "Synthetic control",
     intervention_label: str | None = None,
+    benchmark: LiteratureBenchmark | None = None,
     color: str = BLUE,
-    figsize: tuple = (7.2, 3.8),
+    figsize: tuple | None = None,
 ):
     """Plot an observed/counterfactual pair or a single effect path; return Axes.
 
@@ -357,14 +492,25 @@ def plot_paths(
     and calendar time retain their actual spacing. Supply ``ylabel`` for
     substantive units and ``ax`` to compose a larger figure. ``subtitle`` and
     ``note`` reserve figure-level caption space and require ``ax=None``.
+    ``benchmark`` adds a sourced annotation; its numeric guide is drawn only
+    with ``effects=True``, never on an outcome-level axis.
     """
     _validate(estimate)
-    if ax is not None and (subtitle is not None or note is not None):
-        raise ValueError("subtitle and note require ax=None; add captions to your parent figure")
+    _validate_benchmark(benchmark, estimate)
+    if ax is not None and (subtitle is not None or note is not None or benchmark is not None):
+        raise ValueError(
+            "subtitle, note and benchmark require ax=None; add captions to your parent figure"
+        )
     with publication_style():
         own_figure = ax is None
         if ax is None:
-            fig, body = _figure_grid(figsize, title or estimate.method, subtitle, note)
+            fig, body = _figure_grid(
+                figsize or (7.2, 4.55 if benchmark else 3.8),
+                title or estimate.method,
+                subtitle,
+                note,
+                benchmark,
+            )
             ax = fig.add_subplot(body)
         x, kind = _time(estimate.observed.index)
         _axes_style(ax)
@@ -375,7 +521,8 @@ def plot_paths(
             ax.plot(
                 x, estimate.effects, color=color, linewidth=1.65, label=estimate.method, zorder=3
             )
-            ax.set_ylim(*_limits(estimate.effects))
+            _benchmark_effect(ax, x, estimate.n_pre, benchmark)
+            ax.set_ylim(*_effect_limits(estimate.effects, benchmark))
         else:
             ax.plot(x, estimate.observed, color=INK, linewidth=1.8, label=observed_label, zorder=3)
             ax.plot(
@@ -442,6 +589,7 @@ def plot_effects(
     sharey: bool = True,
     ylim: tuple | None = None,
     figsize: tuple | None = None,
+    benchmark: LiteratureBenchmark | None = None,
     note: str
     | None = "Common outcome sample and treatment date. Shading marks the post-period; no uncertainty intervals are shown.",
 ):
@@ -452,6 +600,8 @@ def plot_effects(
     ``sharey=False`` explicitly allows different scales. ``labels`` and
     ``colors`` customize display without renaming estimates. Unused panels
     are hidden. The returned array always has shape (nrows, ncols).
+    A numeric ``benchmark`` adds a dotted source mean over the matching
+    post-period, with its citation and specification in a separate strip.
     """
     _estimates(estimates)
     if isinstance(ncols, bool) or not isinstance(ncols, (int, np.integer)) or ncols < 1:
@@ -461,13 +611,22 @@ def plot_effects(
     ncols = min(ncols, len(estimates))
     nrows = (len(estimates) + ncols - 1) // ncols
     reference = next(iter(estimates.values()))
+    _validate_benchmark(benchmark, reference)
     with publication_style():
-        fig, body = _figure_grid(figsize or (7.2, 1.1 + 1.85 * nrows), title, subtitle, note)
+        fig, body = _figure_grid(
+            figsize or (7.2, 1.1 + 1.85 * nrows + (0.75 if benchmark else 0)),
+            title,
+            subtitle,
+            note,
+            benchmark,
+        )
         grid = body.subgridspec(nrows, ncols, hspace=0.22, wspace=0.12)
         axes = np.empty((nrows, ncols), dtype=object)
         fig._pysynth_panel_titles = []
         x, kind = _time(reference.observed.index)
-        common = ylim or _limits(np.concatenate([r.effects.to_numpy() for r in estimates.values()]))
+        common = ylim or _effect_limits(
+            np.concatenate([r.effects.to_numpy() for r in estimates.values()]), benchmark
+        )
         for position, (name, result) in enumerate(estimates.items()):
             row, col = divmod(position, ncols)
             first = axes[0, 0] if position else None
@@ -485,7 +644,14 @@ def plot_effects(
                 label=name,
                 zorder=3,
             )
-            ax.set_ylim(*(common if sharey or ylim is not None else _limits(result.effects)))
+            _benchmark_effect(ax, x, reference.n_pre, benchmark)
+            ax.set_ylim(
+                *(
+                    common
+                    if sharey or ylim is not None
+                    else _effect_limits(result.effects, benchmark)
+                )
+            )
             display_name = (labels or {}).get(name, name)
             letter = chr(65 + position) if position < 26 else str(position + 1)
             title_artist = ax.set_title(
@@ -523,6 +689,7 @@ def plot_comparison(
     subtitle: str | None = None,
     units: str = "outcome units",
     figsize: tuple | None = None,
+    benchmark: LiteratureBenchmark | None = None,
     note: str
     | None = "Dots are point estimates, without confidence intervals. Pretreatment RMSE describes fit, not causal credibility.",
 ):
@@ -532,12 +699,21 @@ def plot_comparison(
     x scales. ATT includes zero; RMSE starts at zero. Every method must share
     the same observed path, ordered time index and treatment boundary. No
     error bars, significance tests, rankings or uncertainty are inferred.
+    ``benchmark`` adds a sourced annotation and, if numeric, a dotted guide
+    on the ATT axis only. Its averaging window must match the full post-period.
     """
     table = _estimates(estimates)
+    _validate_benchmark(benchmark, next(iter(estimates.values())))
     with publication_style():
         from matplotlib.ticker import FuncFormatter, MaxNLocator
 
-        fig, body = _figure_grid(figsize or (7.2, 1.55 + 0.31 * len(table)), title, subtitle, note)
+        fig, body = _figure_grid(
+            figsize or (7.2, 1.55 + 0.31 * len(table) + (0.75 if benchmark else 0)),
+            title,
+            subtitle,
+            note,
+            benchmark,
+        )
         grid = body.subgridspec(1, 2, width_ratios=[1.2, 1], wspace=0.15)
         axes = np.array([fig.add_subplot(grid[0]), fig.add_subplot(grid[1])])
         y = np.arange(len(table))
@@ -578,6 +754,16 @@ def plot_comparison(
                     bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.8},
                 )
             low, high = min(0, values.min()), max(0, values.max())
+            if metric == "att" and benchmark is not None and benchmark.value is not None:
+                ax.axvline(
+                    benchmark.value,
+                    color=LITERATURE,
+                    linewidth=1,
+                    linestyle=(0, (2, 2)),
+                    label="Literature mean ATT",
+                    zorder=2.5,
+                )
+                low, high = min(low, benchmark.value), max(high, benchmark.value)
             span = high - low or 1.0
             ax.set_xlim(0 if metric == "pre_rmse" else low - span * 0.12, high + span * 0.37)
             ax.xaxis.set_major_locator(

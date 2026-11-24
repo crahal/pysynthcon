@@ -7,6 +7,9 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Added
 
+- Sourced `LiteratureBenchmark` annotations on every empirical figure, with
+  compatible mean-effect guides, linked citations and explicit source windows.
+  Paper findings are distinguished from the authors' Kansas worked example.
 - Publication plotting API: observed/counterfactual paths, shared-scale
   effect panels and aligned ATT/pretreatment-RMSE summaries, with explicit
   units, intervention markers and no invented uncertainty intervals.
@@ -26,6 +29,8 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Changed
 
+- German figure units now state PPP-adjusted current US dollars, following
+  the authors' 2025 erratum. No data or estimator results changed.
 - `Estimate.plot()` now uses the publication style and accepts plot labels
   and captions while retaining its Axes return value.
 - Notebook generation uses stable cell IDs and public plotting functions;
