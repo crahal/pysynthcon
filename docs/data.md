@@ -34,6 +34,10 @@ matrix is copied and made read-only to prevent accidental input mutation.
 ## Simultaneous treatment
 
 Pass `treated_units=[...]` to `from_frame` for a simultaneous treated block.
+For a single string identifier use `treated_unit="CA"` or
+`treated_units=["CA"]`. Both `treated_units` and `controls` require a
+collection of identifiers. A bare string can be confused with a sequence
+of one-character unit names.
 SDID and DID implement this design directly. Outcome SCM fits the treated
 group's equal-weight average trajectory. SCUL and upstream adapters require
 one treated unit. Staggered treatment is not automatically interpreted as a

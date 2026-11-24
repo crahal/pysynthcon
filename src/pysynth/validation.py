@@ -3,61 +3,14 @@
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from numbers import Integral, Real
+from numbers import Integral
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from .panel import Panel
-from .results import Estimate, Estimator, _root_mean_square
-
-
-def _validate_real_values(series: pd.Series, name: str) -> None:
-    if not pd.api.types.is_numeric_dtype(series.dtype) or pd.api.types.is_complex_dtype(
-        series.dtype
-    ):
-        raise TypeError(f"Estimate {name} must contain real numeric values")
-    if not np.isfinite(series.to_numpy(dtype=float)).all():
-        raise ValueError(f"Estimate {name} must be finite")
-
-
-def _validate_estimate(panel: Panel, estimate: Estimate) -> None:
-    """Reject misaligned or nonfinite results before computing diagnostics."""
-    if not isinstance(estimate, Estimate):
-        raise TypeError("fit must return an Estimate")
-    if (
-        not isinstance(estimate.n_pre, Integral)
-        or isinstance(estimate.n_pre, bool)
-        or estimate.n_pre != panel.n_pre
-    ):
-        raise ValueError("Estimate treatment timing does not match the fitted panel")
-    for name, series, expected_index in (
-        ("observed", estimate.observed, panel.times),
-        ("counterfactual", estimate.counterfactual, panel.times),
-        ("weights", estimate.weights, pd.Index(panel.units[: panel.n_control])),
-    ):
-        if not isinstance(series, pd.Series) or not series.index.equals(expected_index):
-            raise ValueError(f"Estimate {name} labels and order must match the fitted panel")
-        _validate_real_values(series, name)
-    if not np.array_equal(estimate.observed.to_numpy(), panel.treated):
-        raise ValueError("Estimate observed outcomes do not match the fitted panel")
-    if not isinstance(estimate.intercept, Real) or not np.isfinite(float(estimate.intercept)):
-        raise ValueError("Estimate intercept must be finite and real")
-    if estimate.time_weights is not None:
-        if not isinstance(
-            estimate.time_weights, pd.Series
-        ) or not estimate.time_weights.index.equals(panel.times[: panel.n_pre]):
-            raise ValueError("Estimate time weights must match pre-treatment labels and order")
-        _validate_real_values(estimate.time_weights, "time weights")
-    if not isinstance(estimate.metadata, Mapping):
-        raise TypeError("Estimate metadata must be a mapping")
-    with np.errstate(over="ignore", invalid="ignore"):
-        effects = estimate.observed.to_numpy(dtype=float) - estimate.counterfactual.to_numpy(
-            dtype=float
-        )
-    if not np.isfinite(effects).all():
-        raise ValueError("Estimate differences exceed finite floating-point range")
+from .results import Estimate, Estimator, _root_mean_square, _validate_estimate
 
 
 def _mean(values: np.ndarray) -> float:

@@ -9,8 +9,7 @@ import numpy as np
 import pandas as pd
 
 from .panel import Panel
-from .results import Estimate, Estimator
-from .validation import _validate_estimate
+from .results import Estimate, Estimator, _validate_estimate
 
 
 @dataclass
@@ -20,8 +19,8 @@ class DonorSensitivityResult:
     ``baseline`` maps model names to full-pool estimates. ``estimates`` maps
     scenario names to model-name/Estimate dictionaries; each Estimate retains
     the complete fitted paths, signed donor weights and optimizer metadata.
-    Metadata is independently copied after each fit so later fits cannot
-    overwrite an earlier scenario's recorded diagnostics.
+    Each fit is copied before the next scenario so an estimator that reuses
+    output buffers cannot overwrite earlier paths or diagnostics.
     ``table`` has one row per model and exclusion scenario. ``summary`` is
     indexed by model, and its minima/maxima cover exclusion scenarios only.
 
@@ -147,7 +146,7 @@ def donor_sensitivity(
             _validate_estimate(fitting_panel, estimate)
             if not np.isfinite(estimate.att) or not np.isfinite(estimate.pre_rmse):
                 raise ValueError("Estimate ATT and pre-treatment RMSE must be finite")
-            return replace(estimate, metadata=deepcopy(dict(estimate.metadata)))
+            return deepcopy(replace(estimate, metadata=dict(estimate.metadata)))
         except Exception as exc:
             raise RuntimeError(
                 f"Donor sensitivity failed for model {name!r} in scenario {scenario!r}: {exc}"

@@ -229,7 +229,7 @@ def test_final_selection_fit_cannot_mutate_original_panel(trend_panel):
     assert result.estimate.att == 5
 
 
-def test_nonfinite_selected_att_is_rejected_with_final_fit_context(trend_panel):
+def test_finite_selected_att_with_overflowing_intermediate_sum(trend_panel):
     class ExtremeFinalEstimator:
         def fit(self, panel):
             estimate = FixedEstimator().fit(panel)
@@ -237,11 +237,10 @@ def test_nonfinite_selected_att_is_rejected_with_final_fit_context(trend_panel):
                 estimate.counterfactual.iloc[panel.n_pre :] = -1e308
             return estimate
 
-    with pytest.warns(RuntimeWarning, match="overflow"):
-        with pytest.raises(RuntimeError, match="Final fit.*'extreme'.*must be finite"):
-            select_estimator(
-                trend_panel, {"extreme": ExtremeFinalEstimator}, initial_window=3, horizon=2
-            )
+    result = select_estimator(
+        trend_panel, {"extreme": ExtremeFinalEstimator}, initial_window=3, horizon=2
+    )
+    assert result.estimate.att == 1e308
 
 
 def test_reused_estimator_instance_is_rejected(trend_panel):

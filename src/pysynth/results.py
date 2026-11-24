@@ -1,6 +1,7 @@
 """Common result objects and comparison helpers."""
 
 from dataclasses import dataclass, field
+from numbers import Integral, Real
 from typing import Any, Mapping, Protocol
 
 import numpy as np
@@ -18,6 +19,32 @@ def _root_mean_square(values) -> float:
     if scale == 0:
         return 0.0
     return float(scale * np.sqrt(np.mean((values / scale) ** 2)))
+
+
+def _mean_effect(values) -> float:
+    """Average a finite, nonempty effect window, scaling only if its sum overflows."""
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 1 or not values.size or not np.isfinite(values).all():
+        raise ValueError("A mean effect requires a nonempty window of finite effects")
+    with np.errstate(over="ignore", invalid="ignore"):
+        mean = float(values.mean())
+    if np.isfinite(mean):
+        return mean
+    scale = np.max(np.abs(values))
+    return float((values / scale).mean() * scale)
+
+
+def _real_series_values(series: pd.Series, name: str) -> np.ndarray:
+    if not isinstance(series, pd.Series):
+        raise TypeError(f"Estimate {name} must be a labelled Series")
+    if not pd.api.types.is_numeric_dtype(series.dtype) or pd.api.types.is_complex_dtype(
+        series.dtype
+    ):
+        raise TypeError(f"Estimate {name} must contain real numeric values")
+    values = series.to_numpy(dtype=float, na_value=np.nan)
+    if not np.isfinite(values).all():
+        raise ValueError(f"Estimate {name} must be finite")
+    return values
 
 
 class Estimator(Protocol):
@@ -47,12 +74,40 @@ class Estimate:
     @property
     def effects(self) -> pd.Series:
         """Time-specific observed minus counterfactual outcomes."""
-        return (self.observed - self.counterfactual).rename("effect")
+        observed = _real_series_values(self.observed, "observed")
+        counterfactual = _real_series_values(self.counterfactual, "counterfactual")
+        times = self.observed.index
+        if not times.is_unique or times.hasnans or not times.is_monotonic_increasing:
+            raise ValueError("Estimate time labels must be unique, nonmissing and increasing")
+        if not times.equals(self.counterfactual.index):
+            raise ValueError(
+                "Estimate counterfactual labels and order must match observed outcomes"
+            )
+        if (
+            isinstance(self.n_pre, bool)
+            or not isinstance(self.n_pre, Integral)
+            or not 1 <= self.n_pre < len(times)
+        ):
+            raise ValueError("Estimate timing must leave both pre- and post-treatment observations")
+        # Integer series can encode adjacent values above 2**53, and their
+        # difference can exceed int64. Subtract those integers before casting.
+        if all(
+            pd.api.types.is_integer_dtype(s.dtype) for s in (self.observed, self.counterfactual)
+        ):
+            values = (self.observed.astype(object) - self.counterfactual.astype(object)).to_numpy(
+                dtype=float
+            )
+        else:
+            with np.errstate(over="ignore", invalid="ignore"):
+                values = observed - counterfactual
+        if not np.isfinite(values).all():
+            raise ValueError("Estimate differences exceed finite floating-point range")
+        return pd.Series(values, index=times, name="effect")
 
     @property
     def att(self) -> float:
         """Mean effect over all post-treatment periods."""
-        return float(self.effects.iloc[self.n_pre :].mean())
+        return _mean_effect(self.effects.iloc[self.n_pre :])
 
     @property
     def pre_rmse(self) -> float:
@@ -111,11 +166,48 @@ def make_estimate(
     )
 
 
+def _validate_estimate(
+    panel: Panel | None, estimate: Estimate, *, allow_subset_weights: bool = False
+) -> None:
+    """Check the labelled result and, when supplied, the data it purports to fit."""
+    if not isinstance(estimate, Estimate):
+        raise TypeError("fit must return an Estimate")
+    # Calculating the path checks period alignment, timing and finite differences.
+    _ = estimate.effects
+    _real_series_values(estimate.weights, "weights")
+    weights = estimate.weights.index
+    if not len(weights) or not weights.is_unique or pd.Index(weights, tupleize_cols=False).hasnans:
+        raise ValueError("Donor weights require unique, nonmissing unit labels")
+    if panel is not None:
+        if estimate.n_pre != panel.n_pre or not estimate.observed.index.equals(panel.times):
+            raise ValueError(
+                "Estimate observed time labels or treatment timing differ from the fitted panel"
+            )
+        if not np.array_equal(estimate.observed.to_numpy(), panel.treated):
+            raise ValueError("Estimate observed outcomes do not match the fitted panel")
+        donors = pd.Index(panel.units[: panel.n_control], tupleize_cols=False)
+        if allow_subset_weights:
+            if not weights.isin(donors).all():
+                raise ValueError("Estimate weights contain donors outside the fitted panel")
+        elif not weights.equals(donors):
+            raise ValueError("Estimate donor weights and order must match the fitted panel")
+    if not isinstance(estimate.intercept, Real) or not np.isfinite(float(estimate.intercept)):
+        raise ValueError("Estimate intercept must be finite and real")
+    if estimate.time_weights is not None:
+        _real_series_values(estimate.time_weights, "time weights")
+        if not estimate.time_weights.index.equals(estimate.observed.index[: estimate.n_pre]):
+            raise ValueError("Estimate time weights must match pre-treatment labels and order")
+    if not isinstance(estimate.metadata, Mapping):
+        raise TypeError("Estimate metadata must be a mapping")
+
+
 def compare(models: Mapping[str, Estimator | Estimate], panel: Panel | None = None) -> pd.DataFrame:
     """Compare fitted estimates or fit named estimators on a common panel.
 
     Failures propagate; methods are never silently omitted. Models may use
-    different estimands or covariates: see the method documentation.
+    different estimands or covariates. A supplied panel also validates prefitted
+    results against its observed outcomes, timing and donor labels. The
+    ``donors_used`` count uses absolute donor weight greater than 1e-6.
     """
     rows = []
     reference = None
@@ -124,6 +216,7 @@ def compare(models: Mapping[str, Estimator | Estimate], panel: Panel | None = No
             if panel is None:
                 raise ValueError("panel is required when comparing unfitted estimators")
             model = model.fit(panel)
+        _validate_estimate(panel, model, allow_subset_weights=True)
         if reference is not None and (
             model.n_pre != reference.n_pre
             or not model.observed.index.equals(reference.observed.index)

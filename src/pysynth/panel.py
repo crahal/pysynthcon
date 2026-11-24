@@ -24,24 +24,39 @@ class Panel:
     units: tuple | None = None
 
     def __post_init__(self):
-        y = np.array(self.y, dtype=float, copy=True)
+        raw = np.asanyarray(self.y)
+        if np.ma.is_masked(raw) or raw.dtype.kind in "cmM":
+            raise ValueError("y must contain observed, real outcomes")
+        if raw.dtype.kind == "O" and any(
+            isinstance(value, (complex, np.complexfloating, np.datetime64, np.timedelta64))
+            for value in raw.flat
+        ):
+            raise ValueError("y must contain observed, real outcomes")
+        y = np.array(raw, dtype=float, copy=True)
         if y.ndim != 2 or not np.isfinite(y).all():
             raise ValueError("y must be a finite two-dimensional time-by-unit matrix")
-        if not isinstance(self.n_control, Integral) or not 1 <= self.n_control < y.shape[1]:
+        if (
+            isinstance(self.n_control, bool)
+            or not isinstance(self.n_control, Integral)
+            or not 1 <= self.n_control < y.shape[1]
+        ):
             raise ValueError("n_control must leave at least one control and one treated unit")
         if not isinstance(self.n_pre, Integral) or not 2 <= self.n_pre < y.shape[0]:
             raise ValueError("n_pre must leave at least two pre-periods and one post-period")
         times = pd.Index(range(y.shape[0])) if self.times is None else pd.Index(self.times)
+        if isinstance(self.units, (str, bytes)):
+            raise ValueError("units must be a sequence of unit labels, not a single string")
         units = tuple(range(y.shape[1])) if self.units is None else tuple(self.units)
         if len(times) != y.shape[0] or not times.is_unique or times.hasnans:
             raise ValueError("times must be unique, nonmissing, and match the rows of y")
         if not times.is_monotonic_increasing:
             raise ValueError("times must be sorted in increasing order")
-        if len(units) != y.shape[1] or not pd.Index(units).is_unique or pd.Index(units).hasnans:
+        unit_index = pd.Index(units, tupleize_cols=False)
+        if len(units) != y.shape[1] or not unit_index.is_unique or unit_index.hasnans:
             raise ValueError("units must be unique, nonmissing, and match the columns of y")
         y.flags.writeable = False
         object.__setattr__(self, "y", y)
-        object.__setattr__(self, "times", times.copy())
+        object.__setattr__(self, "times", times.copy(deep=True))
         object.__setattr__(self, "units", units)
 
     @classmethod
@@ -65,6 +80,14 @@ class Panel:
         """
         if (treated_unit is None) == (treated_units is None):
             raise ValueError("Supply exactly one of treated_unit and treated_units")
+        if isinstance(treated_units, (str, bytes)):
+            raise ValueError(
+                "Use treated_unit for a single string label or pass a list to treated_units"
+            )
+        if isinstance(controls, (str, bytes)):
+            raise ValueError(
+                "controls must be a sequence of unit labels; wrap a single label in a list"
+            )
         treated = [treated_unit] if treated_units is None else list(treated_units)
         if not treated or len(set(treated)) != len(treated):
             raise ValueError("treated units must be nonempty and unique")
@@ -90,7 +113,7 @@ class Panel:
         if treatment_time not in wide.index:
             raise ValueError("treatment_time must be an observed time (first affected period)")
         return cls(
-            wide[order].to_numpy(),
+            wide.reindex(columns=order).to_numpy(),
             len(donors),
             wide.index.get_loc(treatment_time),
             wide.index,
@@ -105,7 +128,15 @@ class Panel:
     @property
     def treated(self) -> np.ndarray:
         """Equal-weight average outcome of the treated units."""
-        return self.y[:, self.n_control :].mean(axis=1)
+        values = self.y[:, self.n_control :]
+        with np.errstate(over="ignore", invalid="ignore"):
+            means = values.mean(axis=1)
+        overflow = ~np.isfinite(means)
+        if overflow.any():
+            rows = values[overflow]
+            scale = np.abs(rows).max(axis=1)
+            means[overflow] = (rows / scale[:, None]).mean(axis=1) * scale
+        return means
 
     @property
     def n_treated(self) -> int:
@@ -119,9 +150,10 @@ class Panel:
 
     def to_frame(self) -> pd.DataFrame:
         """Return long data using canonical names ``unit``, ``time``, ``outcome``."""
-        return (
-            pd.DataFrame(self.y, index=self.times, columns=self.units)
-            .rename_axis(index="time", columns="unit")
-            .reset_index()
-            .melt(id_vars="time", value_name="outcome")
+        return pd.DataFrame(
+            {
+                "time": self.times.take(np.tile(np.arange(len(self.times)), len(self.units))),
+                "unit": pd.Index(self.units, tupleize_cols=False).repeat(len(self.times)),
+                "outcome": self.y.T.ravel(),
+            }
         )

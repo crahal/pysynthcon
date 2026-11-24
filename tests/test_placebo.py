@@ -33,3 +33,40 @@ def test_exact_zero_pre_fit_convention_and_rank(effect):
     assert diagnostic.table.iloc[0].rmspe_ratio == (np.inf if effect else 0)
     assert (diagnostic.table.iloc[1:].rmspe_ratio == 0).all()
     assert diagnostic.p_value == (0.25 if effect else 1)
+
+
+def test_missing_placebo_prediction_cannot_count_as_an_exact_fit(panel):
+    class DropsLastPlaceboPrediction:
+        def fit(self, supplied):
+            fit = DifferenceInDifferences().fit(supplied)
+            if supplied.units[-1] != panel.units[-1]:
+                fit.counterfactual = fit.counterfactual.iloc[:-1]
+            return fit
+
+    with pytest.raises(ValueError, match="counterfactual labels"):
+        placebo_test(DropsLastPlaceboPrediction(), panel)
+
+
+@pytest.mark.parametrize(
+    "pre, pseudo_post, treated_post",
+    [
+        (1e-300, 1e280, 1e289),  # both displayed quotients overflow
+        (1e300, 1e-280, 1e-270),  # both displayed quotients underflow
+    ],
+)
+def test_extreme_rmspe_ratios_do_not_turn_distinct_fits_into_ties(pre, pseudo_post, treated_post):
+    from pysynth.results import make_estimate
+
+    panel = Panel(np.zeros((4, 4)), 3, 2)
+
+    class ExtremeFit:
+        def fit(self, sample):
+            post = treated_post if sample.units[-1] == panel.units[-1] else pseudo_post
+            return make_estimate(
+                sample, "extreme", np.zeros(sample.n_control), counterfactual=[pre, pre, post, post]
+            )
+
+    result = placebo_test(ExtremeFit(), panel)
+    assert result.table.rmspe_ratio.nunique() == 1
+    assert result.table.at_least_treated_ratio.tolist() == [True, False, False, False]
+    assert result.p_value == 0.25

@@ -354,7 +354,7 @@ def test_finite_but_overflowing_att_difference_is_rejected(panel):
         donor_sensitivity(one_post, {"extreme": ExtremeEstimator})
 
 
-def test_nonfinite_att_from_finite_paths_is_rejected_with_context(panel):
+def test_finite_att_despite_overflowing_intermediate_sum(panel):
     class ExtremeMeanEstimator:
         def fit(self, fitted_panel):
             counterfactual = fitted_panel.treated.copy()
@@ -366,6 +366,24 @@ def test_nonfinite_att_from_finite_paths_is_rejected_with_context(panel):
                 counterfactual=counterfactual,
             )
 
-    with np.errstate(over="ignore"):
-        with pytest.raises(RuntimeError, match="model 'extreme'.*scenario 'baseline'.*finite"):
-            donor_sensitivity(panel, {"extreme": ExtremeMeanEstimator})
+    result = donor_sensitivity(panel, {"extreme": ExtremeMeanEstimator})
+    assert result.baseline["extreme"].att == 1e308
+    assert result.table.att.eq(1e308).all()
+    assert result.table.att_change.eq(0).all()
+
+
+def test_refits_reusing_a_prediction_buffer_preserve_baseline_and_changes(panel):
+    # Some custom backends fill one output array for each successive refit.
+    shared = pd.Series(np.zeros(len(panel.times)), index=panel.times)
+
+    class SharedOutputEstimator:
+        def fit(self, fitted_panel):
+            estimate = EqualWeightEstimator().fit(fitted_panel)
+            shared.iloc[:] = fitted_panel.treated - fitted_panel.n_control
+            estimate.counterfactual = shared
+            return estimate
+
+    result = donor_sensitivity(panel, {"shared": SharedOutputEstimator})
+    assert result.baseline["shared"].att == panel.n_control
+    assert result.table.att.eq(panel.n_control - 1).all()
+    assert result.table.att_change.eq(-1).all()
