@@ -18,8 +18,13 @@ def individual_panel():
 
 
 def test_isc_and_2sisc_have_distinct_donor_pools(individual_panel):
-    vanilla = IndividualSC().fit(individual_panel)
-    two_stage = TwoStageIndividualSC(n_neighbors=1).fit(individual_panel)
+    vanilla = IndividualSC(
+        backend="fixed_metric",
+        n_bootstrap=0,
+    ).fit(individual_panel)
+    two_stage = TwoStageIndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=1).fit(
+        individual_panel
+    )
     assert vanilla.method == "ISC"
     assert two_stage.method == "2SISC"
     np.testing.assert_allclose(vanilla.weights, [0.5, 0.5, 0], atol=1e-6)
@@ -34,7 +39,9 @@ def test_isc_and_2sisc_have_distinct_donor_pools(individual_panel):
 
 
 def test_2sisc_fits_convex_weights_inside_screened_pool(individual_panel):
-    result = TwoStageIndividualSC(n_neighbors=2).fit(individual_panel)
+    result = TwoStageIndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=2).fit(
+        individual_panel
+    )
     assert result.metadata["selected_donors"] == ["A", "B"]
     np.testing.assert_allclose(result.weights, [0.5, 0.5, 0], atol=1e-6)
     assert result.att == pytest.approx(3, abs=1e-5)
@@ -44,8 +51,10 @@ def test_2sisc_fits_convex_weights_inside_screened_pool(individual_panel):
 @pytest.mark.parametrize("n_bootstrap", [0, 12])
 def test_full_pool_2sisc_equals_isc(individual_panel, n_neighbors, n_bootstrap):
     options = {"n_bootstrap": n_bootstrap, "random_state": 17}
-    vanilla = IndividualSC(**options).fit(individual_panel)
-    two_stage = TwoStageIndividualSC(n_neighbors=n_neighbors, **options).fit(individual_panel)
+    vanilla = IndividualSC(backend="fixed_metric", **options).fit(individual_panel)
+    two_stage = TwoStageIndividualSC(
+        backend="fixed_metric", n_neighbors=n_neighbors, **options
+    ).fit(individual_panel)
     np.testing.assert_array_equal(vanilla.weights, two_stage.weights)
     np.testing.assert_array_equal(vanilla.counterfactual, two_stage.counterfactual)
     assert vanilla.metadata["bootstrap_atts"] == two_stage.metadata["bootstrap_atts"]
@@ -55,7 +64,9 @@ def test_full_pool_2sisc_equals_isc(individual_panel, n_neighbors, n_bootstrap):
 def test_2sisc_features_control_both_stages(individual_panel):
     # C is the sole exact match on supplied features, despite poor pre-outcome fit.
     features = np.array([[0, 10, 5, 5]])
-    result = TwoStageIndividualSC(n_neighbors=1).fit(individual_panel, features=features)
+    result = TwoStageIndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=1).fit(
+        individual_panel, features=features
+    )
     assert result.metadata["selected_donors"] == ["C"]
     assert result.metadata["matching_features"] == "supplied_features"
     np.testing.assert_array_equal(result.weights, [0, 0, 1])
@@ -70,7 +81,7 @@ def test_2sisc_ties_follow_panel_order(individual_panel):
         2,
         units=[individual_panel.units[i] for i in permutation],
     )
-    fit = TwoStageIndividualSC(n_neighbors=1).fit(reordered)
+    fit = TwoStageIndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=1).fit(reordered)
     assert fit.metadata["selected_donors"] == ["B"]
 
 
@@ -78,7 +89,9 @@ def test_2sisc_never_uses_donor_or_treated_post_outcomes_for_weights(individual_
     changed = individual_panel.y.copy()
     changed[2, :] = [-1000, 2000, -3000, 4000]
     other = Panel(changed, 3, 2, units=individual_panel.units)
-    model = TwoStageIndividualSC(n_neighbors=2, n_bootstrap=5, random_state=3)
+    model = TwoStageIndividualSC(
+        backend="fixed_metric", n_bootstrap=5, n_neighbors=2, random_state=3
+    )
     before, after = model.fit(individual_panel), model.fit(other)
     assert before.metadata["selected_donors"] == after.metadata["selected_donors"]
     np.testing.assert_array_equal(before.weights, after.weights)
@@ -88,7 +101,7 @@ def test_2sisc_fit_many_retains_screening_and_person_weights(individual_panel):
     changed = individual_panel.y.copy()
     changed[2, -1] += 2
     other = Panel(changed, 3, 2, units=individual_panel.units)
-    result = TwoStageIndividualSC(n_neighbors=1).fit_many(
+    result = TwoStageIndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=1).fit_many(
         {"first": individual_panel, "second": other},
         person_weights={"first": 1, "second": 3},
     )
@@ -102,12 +115,30 @@ def test_2sisc_fit_many_retains_screening_and_person_weights(individual_panel):
 @pytest.mark.parametrize("n_neighbors", [-1, 1.5, None, True])
 def test_2sisc_rejects_invalid_neighbor_count(individual_panel, n_neighbors):
     with pytest.raises(ValueError, match="n_neighbors must be a positive integer"):
-        TwoStageIndividualSC(n_neighbors=n_neighbors).fit(individual_panel)
+        TwoStageIndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=n_neighbors).fit(
+            individual_panel
+        )
 
 
 def test_isc_rejects_old_screening_configuration():
     with pytest.raises(TypeError):
-        IndividualSC(n_neighbors=3)
+        IndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=3)
     # A former positional neighbor count must not silently become n_bootstrap.
     with pytest.raises(TypeError):
         IndividualSC(3)
+
+
+def test_original_isc_rejects_post_treatment_covariate_rows(individual_panel):
+    with pytest.raises(ValueError, match="n_pre-by-units"):
+        IndividualSC().fit(individual_panel, predictors={"age": individual_panel.y})
+
+
+def test_original_isc_requires_named_groups_instead_of_fixed_metric_features(individual_panel):
+    with pytest.raises(ValueError, match="named time-series"):
+        IndividualSC().fit(individual_panel, features=individual_panel.y[:2])
+
+
+@pytest.mark.parametrize("seed", [-1, 1.5, True, 2147483648])
+def test_original_isc_rejects_invalid_r_seeds(individual_panel, seed):
+    with pytest.raises(ValueError, match="random_state must be"):
+        IndividualSC(random_state=seed).fit(individual_panel)

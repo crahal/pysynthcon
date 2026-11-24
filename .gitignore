@@ -155,6 +155,7 @@ activemq-data/
 .venv
 .venv*/
 .data-cache/
+.r-library/
 *.executed.ipynb
 env/
 venv/

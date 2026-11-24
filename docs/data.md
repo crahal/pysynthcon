@@ -68,15 +68,19 @@ positive person weights. An event-time mean uses cases observed at that
 event time, so the composition can change across the curve. Counts and
 weight totals are always returned.
 
-For one case, either estimator's `fit(panel, features=matrix)` can use stacked
-pretreatment outcomes and covariates. Columns must match `panel.units`.
-Those features replace the pre-outcome fitting matrix; in 2SISC they also
-determine nearest donors. Scale disparate variables deliberately. For example,
-`TwoStageIndividualSC(n_neighbors=50).fit(panel, features=matrix)` screens
-and fits using those features, then predicts using donor outcome paths.
-The library cannot infer when externally supplied features were measured.
-`fit_many` uses each panel's pretreatment outcomes; fit individual panels
-separately when supplying custom feature matrices.
+For one case, use `fit(panel, predictors={"age": age, "education": education})`.
+Each array has `panel.n_pre` rows and columns in `panel.units` order. MSCMT
+uses each series as a predictor group, alongside the pretreatment outcome,
+and learns predictor importance using its original optimization. 2SISC screens
+on the stacked, unscaled predictor series; scale disparate variables deliberately
+before screening. Only pretreatment measurements should be supplied.
+
+For several cases, pass a mapping of case identifiers to these predictor
+dictionaries through `fit_many(panels, predictors=case_predictors)`. Its keys
+must match the panel mapping. The earlier generic `features` matrix remains
+available only with explicitly selected `backend="fixed_metric"`; that
+adaptation is not the default original ISC procedure. Install the
+[R reference dependencies](reference_backends.md) before using the default.
 
 ## Academic downloads
 

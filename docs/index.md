@@ -13,6 +13,7 @@ methods
 inference
 plotting
 backends
+reference_backends
 replication
 api
 references

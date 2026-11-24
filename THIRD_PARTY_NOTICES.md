@@ -20,8 +20,10 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-SCUL's rolling-origin procedure is adapted from Alex Hollingsworth's scul package,
-commit 121b588cf8e4eebcea68518b57a7c754040153bb. Its MIT notice follows.
+SCUL's original R functions are included from Alex Hollingsworth's scul package,
+commit 121b588cf8e4eebcea68518b57a7c754040153bb. Two validation slices preserve
+matrix dimensions with drop=FALSE; the fitting algorithm is unchanged. The
+explicit native Python adaptation also follows this procedure. Its MIT notice follows.
 
 # MIT License
 
@@ -46,7 +48,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-IndividualSC is independently implemented from the documented statistical design;
+IndividualSC calls the separately installed GPL-licensed MSCMT package through
+an independently written process adapter following the documented design;
 the CC BY-NC-SA code in IndividualSyntheticControl is not copied or distributed.
 The costofcare project is cited as a methodological reference, not vendored.
 PySyncon and SCM are runtime adapters; their estimator source code is not copied

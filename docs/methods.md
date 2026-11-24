@@ -23,108 +23,136 @@ nor a global optimum of the nested nonconvex problem is automatic.
 
 ## SCUL
 
-[Hollingsworth and Wing's SCUL](https://hollina.github.io/scul/) uses lasso
-to construct an extrapolating synthetic series. PySynth minimizes
+`SCUL()` executes the [original Hollingsworth–Wing R
+functions](https://github.com/hollina/scul/tree/121b588cf8e4eebcea68518b57a7c754040153bb/R)
+with **glmnet 4.0-2**, the version recorded in their tutorial. The default
+`backend="r"` never substitutes the earlier sklearn adaptation. Install the
+[reference dependencies](reference_backends.md) before fitting.
 
-$$\frac{1}{2n}\|y-a-Zb\|_2^2 + \alpha\|b\|_1.$$
+The lasso objective is $\|y-a-Zb\|_2^2/(2n)+\alpha\|b\|_1$.
+Each training fold standardizes its donors; glmnet handles the intercept and
+response scaling. Weights can be negative and need not sum to one. PySynth's
+`alpha` means glmnet's penalty **lambda**, not its elastic-net mixing parameter.
 
-Within each training window, donor columns are centered and divided by their
-population standard deviations. The response is centered, and the intercept
-is unpenalized. Constant columns get zero fitted coefficients. Coefficients
-and intercept are transformed back to original units before prediction.
-Weights can be negative and need not sum to one. In scikit-learn, `alpha`
-is glmnet's **lambda**, not glmnet's elastic-net mixing parameter alpha.
+Expanding training windows advance by one period. Both `initial_window` and
+`horizon` default to the post-treatment length, as in the original setup
+function. Short panels require an explicit feasible design; the library never
+silently shortens the horizon. At least two validation origins must fit wholly
+within the pretreatment period. Constant donors are removed from all training
+folds using the original preprocessing rule, and retained as zero weights in
+the returned panel-aligned result.
 
-Automatic selection uses expanding training windows, origins advancing by
-one period, and the next `horizon` periods for validation. The default first
-window is half the pre-periods, with at least three observations. At least
-two validation origins are required. All windows end before treatment.
-
-The default common grid has 100 log-spaced penalties from the largest
-training-window $\alpha_{max}$ to 0.01 times the smallest, where
-$\alpha_{max}=\max_j|Z_j'y|/n$. This follows scul's common-grid design:
-**preprocessing is local to each fold, but the grid uses all pre-treatment
-training windows**. It is not a fully isolated, nested forecasting exercise;
-earlier validation outcomes can influence later training-window grid bounds.
-For a grid fixed independently of validation outcomes, pass explicit
-`alphas`. No treated post-period data enter selection or fitting.
-
-| `selection` | Rule |
+| `selection` | Original R rule |
 |---|---|
-| `"min"` (default) | Lowest average rolling validation MSE; ties favor larger penalties |
-| `"1se"` | Largest penalty within one **sample SD** of fold MSE at the best penalty, reproducing upstream's historical rule |
-| `"median"` | Median fold-optimal penalty on the explicit common grid |
+| `"median"` (default) | Median of the fold-optimal penalties on each fold's own automatically truncated glmnet path |
+| `"min"` | Lowest mean validation MSE on the original 100-penalty common grid, rounded to 10 decimal places |
+| `"1se"` | Largest penalty within one **sample SD** of fold MSE at the best penalty |
 
-The `1se` name does not mean SD divided by the square root of fold count.
-The median option differs from upstream's default, which uses fold-specific,
-automatically truncated glmnet paths. PySynth's default is `min`, not the
-R package's `lambda.median`. A supplied positive `alpha` bypasses validation.
-Convergence issues are surfaced. Native and R SCUL `lambda.min` predictions
-are checked on an independent R-generated fixture; exact default-path parity
-is not claimed for the other options.
+The historical `1se` rule does not divide the SD by the square root of the fold
+count. The common grid uses the maximum training-fold lambda maximum and
+0.01 times the minimum, so its construction uses all pretreatment training
+windows. Final prediction uses the original automatic path and exact refit at
+the selected penalty. No solver tolerances, path lengths, or iteration limits
+are reduced. `alpha` explicitly bypasses cross-validation when the researcher
+has specified a penalty in advance.
+
+`backend="python"` is retained as an explicitly requested adaptation. It uses
+sklearn and a common grid even for median selection; it is not an exact
+replication. None of the empirical notebooks uses this backend.
 
 ## Individual synthetic control (ISC)
 
-`IndividualSC()` is vanilla ISC: fit a synthetic control separately for each
-individual using their **full eligible donor pool**. This per-case design is
-motivated by [Vagni and Breen (2021)](https://doi.org/10.1093/esr/jcab014).
-For pretreatment feature vector $x_i$ and donor feature matrix $X_0$, solve
+`IndividualSC()` fits each case over its **full eligible donor pool**, following
+[Vagni and Breen (2021)](https://doi.org/10.1093/esr/jcab014) and the
+[costofcare replication code](https://github.com/centre-for-care/costofcare/blob/6e7537d67b86fb08709d35b035c9ee9f45e83e93/replication_attempt/src/main.R).
+The default `backend="mscmt"` calls **MSCMT 1.4.0**, using its complete default
+inner weighted nonnegative least-squares solver and outer `DEoptC` search.
+When the original `wnnlsExt` routine reports failure during final fitting or
+weight/predictor checks, a checked numerical repair solves its unchanged
+weighted quadratic at the same predictor weights. Successful calls, the
+compiled `DEoptC` search and `wnnlsOpt` remain unchanged. The repair's convex
+optimality gap must be at most `1e-8` on its commonly scaled mean-squared
+objective, not in raw outcome units; see the
+[reference backend guide](reference_backends.md). No draw or outer-search
+step is dropped, and every repaired call is recorded in metadata.
+Each fit includes all pretreatment outcomes. Additional covariates are supplied
+as named time-series groups:
 
-$$\widehat w_i=\arg\min_{w\geq0,\;\mathbf{1}'w=1}
-\|x_i-X_0w\|_2^2.$$
+```python
+fit = IndividualSC().fit(panel, predictors={
+    "age": age_pre,                 # shape (panel.n_pre, number_of_units)
+    "age_left_school": education_pre,
+})
+```
 
-There is no intercept. By default, features are all pretreatment outcomes;
-`fit(panel, features=matrix)` replaces them with caller-supplied pretreatment
-features. Predictions use the weighted donor outcome paths. With default
-features and no donor resampling, this optimizer is the same as native
-outcome SCM applied to one individual. The individual workflow adds separate
-eligible panels, person weighting and event-time aggregation through `fit_many`.
+The outcome and each named covariate are distinct predictor-weight groups.
+There is no temporal averaging: MSCMT receives the full time series and its
+original default aggregation (`id`). With only the outcome group, predictor
+weight optimization is mathematically unnecessary; MSCMT itself recognizes
+this case. Creating an artificial predictor group for every lag would change
+the original method. The inner donor-weight problem remains a simplex fit.
+MSCMT records its own scaling and optimization, rather than using the earlier
+fixed Euclidean metric in the Python adaptation.
+
+The default averages **50 fits to donor samples drawn with replacement**, as
+in costofcare's `run(r=50)`. The original standalone ISC demonstration uses 10,
+so specify `n_bootstrap=10` to reproduce that design. `n_bootstrap=0` explicitly
+requests an unresampled fit. Sampling uses R's Mersenne-Twister RNG with
+`random_state=42`; all draws are generated before each optimizer is seeded
+with `optimizer_seed=1`, matching the source's ordering. Duplicate sampled
+donors receive distinct optimizer columns, then their weights are summed back
+to the original donor identities before averaging. Metadata retains donor
+samples, each draw's ATT, predictor weights, and package versions.
+
+For multiple cases, use `fit_many(panels, predictors=case_predictors,
+person_weights=weights)`. Each dictionary is keyed by the same case IDs; the
+predictor value for a case is its own named matrix dictionary. Effects align
+by event time, and the overall ATT averages the case means with the supplied
+person weights, rather than overweighting people observed for more periods.
+The R donor-sampling stream advances through cases in their supplied order,
+as in the original parallel ISC script. The state is saved immediately after
+sampling, before MSCMT sets its optimizer seed; numerical optimization cannot
+alter the next case's donor draws. Case order consequently matters for exact
+replication. Each standalone `fit` starts afresh from `random_state`.
 
 ## Two-Stage Individual Synthetic Control (2SISC)
 
-`TwoStageIndividualSC(n_neighbors=10)` adds an explicit first stage:
+`TwoStageIndividualSC(n_neighbors=10)` adds the requested first stage:
 
-1. **Nearest-neighbor donor screening.** From the eligible untreated pool,
-   select up to $k$ donors with the smallest $d_{ij}^2=\|x_i-x_j\|_2^2$.
-2. **Synthetic-control fitting.** Solve ISC's convex-weight problem within
-   that selected group, using the same features. Excluded donors receive
-   zero weight in the returned estimate.
+1. Select up to $k$ eligible donors with the smallest squared Euclidean
+   distance to the treated pretreatment design, stacking the outcome and
+   supplied covariate series.
+2. Run the **same original ISC/MSCMT procedure**, including all 50 donor
+   resamples, within that selected group. Return zero weights for excluded
+   donors.
 
-This implements the requested nearest-neighbor grouping stage; it is not
-k-means clustering. `n_neighbors` must be a positive integer and counts
-actual donors, excluding the treated individual. The effective count is
-`min(n_neighbors, panel.n_control)`. Ties at the cutoff follow panel unit
-order. Selected donors retain that order during fitting. When all eligible
-donors are retained, 2SISC agrees with vanilla ISC, including resampled fits
-with the same random seed.
+This is nearest-neighbor screening. Distances are unscaled, so measurement
+units matter; choose scaling and $k$ before inspecting effects. Ties follow
+Panel order. If all donors are retained, 2SISC and ISC agree, including donor
+resamples under the same seed. With one selected donor, the simplex contains
+only weight one; the adapter handles that exact solution because MSCMT
+requires at least two control columns.
 
-Both stages use pretreatment information. Distance and fitting features are
-unscaled: changing their measurement units can change selection and weights.
-Choose the feature scaling and neighbor count before inspecting treatment
-effects. 2SISC metadata records the requested count, eligible and selected
-counts, selected identities, and `squared_distances` in original donor order
-(`panel.units[:panel.n_control]`). Both estimators record the feature source.
+2SISC is a requested extension, not a published method with a canonical paper
+estimate. Its resampling is conditional on the screened pool and does not
+rerun screening or estimate selection uncertainty.
 
-For example, `compare({"ISC": IndividualSC(), "2SISC":
-TwoStageIndividualSC(n_neighbors=10)}, panel)` shows both estimates. With
-individual-specific panels, either class supports `fit_many(panels,
-person_weights=...)`. The older `IndividualSC(n_neighbors=k)` configuration
-is replaced by `TwoStageIndividualSC(n_neighbors=k)`; constructor options
-are keyword-only.
+### Scope and explicit alternatives
 
-### Resampling and scope
+The costofcare source does not record its MSCMT version; 1.4.0 is the release
+available at its December 2024 revision. This is a pinned, reproducible
+implementation of its algorithm, not proof of bitwise identity to an
+unrecorded historical environment. The original survey eligibility decisions,
+additional study covariates, and restricted microdata remain the researcher's
+responsibility. Aggregate-panel examples are methodological comparisons,
+not reproductions of the motherhood or care study's results.
 
-With `n_bootstrap > 0`, both estimators sample donors with replacement and
-average the fitted weights and paths. Vanilla ISC samples from the full
-eligible pool; 2SISC samples from its fixed stage-one group. Screening is
-not repeated, so these draws do not measure selection uncertainty.
-
-These are independent implementations, not ports of MSCMT. The original ISC
-workflow includes case-specific sampling, predictor-weight optimization,
-and survey decisions that are not recreated automatically. Donor bootstrap
-draws describe sensitivity conditional on the selected donor set; they are
-not calibrated confidence intervals or a full survey-design variance.
-Individuals can share donors, so their estimates need not be independent.
+The earlier fixed-metric implementation is available only by explicitly
+requesting `backend="fixed_metric"`. It accepts a `features` matrix and solves
+$\min_{w\geq0,\,\mathbf{1}'w=1}\|x_i-X_0w\|_2^2$; it does not run MSCMT's
+predictor-weight optimization and is not used in the empirical notebooks.
+Donor-resampling draws alone are not calibrated confidence intervals or a
+full survey-design variance; individuals can also share donors.
 
 ## Synthetic difference-in-differences
 
@@ -161,8 +189,9 @@ PySynth warns while retaining that numerically matching result.
 
 Donor post-outcomes are intentionally used for time weights. Treated
 post-outcomes never determine weights. This version does not implement
-synthdid's time-varying covariate adjustment, staggered adoption extension,
-or its bootstrap/jackknife/placebo variance estimators.
+synthdid's time-varying covariate adjustment or staggered adoption extension.
+Bootstrap, jackknife, and placebo variance estimators follow the original
+procedures; see the [inference guide](inference.md).
 
 ## Difference-in-differences
 

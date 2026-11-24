@@ -37,7 +37,9 @@ def test_sdid_independent_r_reference():
 def test_scul_independent_r_procedure_and_high_precision_glmnet():
     reference = json.loads((Path(__file__).parent / "fixtures/scul_r.json").read_text())
     panel = Panel(reference["y"], 6, 20)
-    result = SCUL(initial_window=8, horizon=2, tol=1e-10).fit(panel)
+    result = SCUL(backend="python", selection="min", initial_window=8, horizon=2, tol=1e-10).fit(
+        panel
+    )
     assert result.metadata["alpha"] == pytest.approx(reference["alpha"], abs=1e-9)
     # Default glmnet's coefficient-change stopping rule leaves a small path
     # error. Verify the estimator separately at a tighter glmnet tolerance.
@@ -63,9 +65,12 @@ def test_additive_multi_treated_exact(model):
     "model",
     [
         SyntheticControl(),
-        SCUL(),
-        IndividualSC(),
-        TwoStageIndividualSC(n_neighbors=3),
+        SCUL(
+            backend="python",
+            selection="min",
+        ),
+        IndividualSC(backend="fixed_metric", n_bootstrap=0),
+        TwoStageIndividualSC(backend="fixed_metric", n_neighbors=3),
         SyntheticDID(),
     ],
 )
@@ -93,7 +98,7 @@ def test_scul_orthogonal_soft_threshold():
     x = np.array([[-1, -1], [-1, 1], [1, -1], [1, 1]], float)
     y = 5 + 2 * x[:, 0] - 3 * x[:, 1]
     panel = Panel(np.column_stack([np.vstack([x, x]), np.tile(y, 2)]), 2, 4)
-    fit = SCUL(alpha=0.25).fit(panel)
+    fit = SCUL(backend="python", selection="min", alpha=0.25).fit(panel)
     np.testing.assert_allclose(fit.weights, [1.75, -2.75], atol=1e-10)
     assert fit.intercept == pytest.approx(5)
 
@@ -102,7 +107,7 @@ def test_scul_validation_origins_and_constant_column(panel):
     y = panel.y.copy()
     y[:, 0] = 1
     p = Panel(y, 6, 20)
-    result = SCUL(initial_window=8, horizon=3).fit(p)
+    result = SCUL(backend="python", selection="min", initial_window=8, horizon=3).fit(p)
     assert result.metadata["origins"] == list(range(8, 18))
     assert result.weights.iloc[0] == 0
     assert len(result.metadata["fold_mse"]) == 10
@@ -110,7 +115,7 @@ def test_scul_validation_origins_and_constant_column(panel):
 
 def test_scul_all_penalty_rules(panel):
     for selection in ["min", "median", "1se"]:
-        r = SCUL(selection=selection, alphas=(1, 0.1, 0.01)).fit(panel)
+        r = SCUL(backend="python", selection=selection, alphas=(1, 0.1, 0.01)).fit(panel)
         assert np.isfinite(r.att)
         assert 0.01 <= r.metadata["alpha"] <= 1
 
@@ -118,8 +123,10 @@ def test_scul_all_penalty_rules(panel):
 @pytest.mark.parametrize(
     "model",
     [
-        IndividualSC(n_bootstrap=10, random_state=42),
-        TwoStageIndividualSC(n_neighbors=4, n_bootstrap=10, random_state=42),
+        IndividualSC(backend="fixed_metric", n_bootstrap=10, random_state=42),
+        TwoStageIndividualSC(
+            backend="fixed_metric", n_neighbors=4, n_bootstrap=10, random_state=42
+        ),
     ],
 )
 def test_individual_bootstrap_reproducibility(panel, model):
@@ -129,7 +136,13 @@ def test_individual_bootstrap_reproducibility(panel, model):
     assert a.weights.sum() == pytest.approx(1)
 
 
-@pytest.mark.parametrize("model", [IndividualSC(), TwoStageIndividualSC(n_neighbors=6)])
+@pytest.mark.parametrize(
+    "model",
+    [
+        IndividualSC(backend="fixed_metric", n_bootstrap=0),
+        TwoStageIndividualSC(backend="fixed_metric", n_bootstrap=0, n_neighbors=6),
+    ],
+)
 def test_individual_event_aggregation(panel, model):
     shorter = Panel(panel.y[2:-2], 6, 18, units=panel.units)
     fitted = model.fit_many({"one": panel, "two": shorter}, person_weights={"one": 1, "two": 3})
@@ -164,11 +177,11 @@ def test_comparison_rejects_different_samples(panel):
 @pytest.mark.parametrize(
     "model",
     [
-        SCUL(alpha=-1),
-        SCUL(horizon=100),
-        SCUL(selection="bad"),
-        TwoStageIndividualSC(n_neighbors=0),
-        IndividualSC(n_bootstrap=-1),
+        SCUL(backend="python", selection="min", alpha=-1),
+        SCUL(backend="python", selection="min", horizon=100),
+        SCUL(backend="python", selection="bad"),
+        TwoStageIndividualSC(backend="fixed_metric", n_neighbors=0),
+        IndividualSC(backend="fixed_metric", n_bootstrap=-1),
         SyntheticDID(eta_lambda=-1),
         SyntheticDID(noise=np.nan),
         SyntheticControl(ridge=-1),
