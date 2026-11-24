@@ -34,6 +34,29 @@ def test_default_runner_ignores_scratch_files_and_reports_missing_example(runner
     assert Path(exc.value.filename) == directory / "basque.ipynb"
 
 
+def test_simulated_example_copy_and_project_exports(runner, monkeypatch, tmp_path):
+    example = "donor_spillovers"
+    directory = tmp_path / "simulated_examples"
+    directory.mkdir()
+    source = directory / f"{example}.ipynb"
+    cell = nbformat.v4.new_code_cell(
+        "from pathlib import Path\n"
+        "dest = Path('outputs/simulated_examples/donor_spillovers')\n"
+        "dest.mkdir(parents=True)\n"
+        "(dest / 'result.csv').write_text('estimate\\n1.0\\n')"
+    )
+    nbformat.write(nbformat.v4.new_notebook(cells=[cell]), source)
+    dest = tmp_path / "copies"
+    monkeypatch.setattr(
+        runner.sys, "argv", [runner.__file__, "--examples", example, "--output-dir", str(dest)]
+    )
+    runner.main()
+    assert nbformat.read(source, as_version=4).cells[0].execution_count is None
+    assert nbformat.read(dest / source.name, as_version=4).cells[0].execution_count == 1
+    assert (tmp_path / "outputs" / directory.name / example / "result.csv").is_file()
+    assert list(dest.iterdir()) == [dest / source.name]
+
+
 @pytest.mark.parametrize("fail", [False, True])
 def test_runner_shuts_down_kernel_and_channels(runner, fail, monkeypatch, tmp_path):
     monkeypatch.setattr(runner.sys, "argv", [runner.__file__, "--examples", "basque"])

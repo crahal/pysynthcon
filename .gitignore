@@ -156,7 +156,8 @@ activemq-data/
 .venv*/
 .data-cache/
 .r-library
-# Generated empirical outputs are kept locally; figures are embedded in notebooks.
+# Notebook exports stay local. The executed notebooks include their figures.
+/outputs/
 /empirical_examples/figures/
 /empirical_examples/baselines/
 /executed-notebooks/

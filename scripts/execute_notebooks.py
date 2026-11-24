@@ -1,8 +1,8 @@
-"""Execute the empirical notebooks using the active interpreter as the kernel.
+"""Execute the empirical and simulated notebooks using the active interpreter.
 
 Usage: python scripts/execute_notebooks.py [--output-dir /tmp/executed]
-Default execution updates tracked notebooks with their outputs. Failures stop
-the run; no failed or missing estimator is silently skipped.
+Default execution updates the notebooks in place. Figures, tables and
+diagnostics are written under the checkout's outputs/ directory.
 """
 
 import argparse
@@ -15,30 +15,36 @@ import nbformat
 from jupyter_client import KernelManager
 from nbclient import NotebookClient
 
-EXAMPLES = ("basque", "california", "germany", "kansas")
+EXAMPLES = {
+    "basque": "empirical_examples",
+    "california": "empirical_examples",
+    "germany": "empirical_examples",
+    "kansas": "empirical_examples",
+    "donor_spillovers": "simulated_examples",
+}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--output-dir", type=Path, help="Save executed notebook copies in this directory"
+    )
     parser.add_argument("--timeout", type=int, default=14400, help="Per-cell timeout in seconds")
     parser.add_argument(
         "--examples",
         nargs="+",
         choices=EXAMPLES,
-        help="Execute selected examples; by default execute all four",
+        help="Execute selected examples, or run all empirical and simulated examples by default",
     )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "pysynth-mpl"))
     os.environ.setdefault("MPLBACKEND", "Agg")
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-    if args.output_dir is not None:
-        os.environ["PYSYNTH_FIGURE_DIR"] = str(args.output_dir.resolve() / "figures")
-    for example in EXAMPLES:
+    for example, directory in EXAMPLES.items():
         if args.examples is not None and example not in args.examples:
             continue
-        path = root / "empirical_examples" / f"{example}.ipynb"
+        path = root / directory / f"{example}.ipynb"
         print(f"Executing {path.name}", flush=True)
         nb = nbformat.read(path, as_version=4)
         manager = KernelManager(kernel_name="python3")

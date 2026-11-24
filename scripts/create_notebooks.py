@@ -114,7 +114,8 @@ def build(name, title, description, reference):
                 "The notebook downloads immutable public data with "
                 "**requests**, checks the reference specification, and exports five "
                 "publication figures locally as PDF, SVG and 300 dpi PNG. "
-                "The figures are embedded below; generated exports stay outside version control. "
+                f"Figures, result tables and diagnostics are written under `outputs/empirical_examples/{name}/` "
+                "relative to the checkout root. "
                 "See [the replication guide](../docs/replication.md) and "
                 "[the figure guide](../docs/plotting.md).",
             )
@@ -122,7 +123,6 @@ def build(name, title, description, reference):
         code("""
             %matplotlib inline
             import hashlib
-            import os
             import json
             import time
             import warnings
@@ -153,10 +153,11 @@ def build(name, title, description, reference):
             )
             from pysynth.plotting import reference_comparison_table
 
-            pd.Series({p: version(p) for p in [
+            versions = pd.Series({p: version(p) for p in [
                 'pysynth-control', 'numpy', 'scipy', 'pandas', 'matplotlib',
                 'pysyncon', 'SyntheticControlMethods',
-            ]}, name='version')
+            ]}, name='version').rename_axis('package')
+            versions
         """),
         markdown("""
             ## Download and verify the academic data
@@ -175,7 +176,6 @@ def build(name, title, description, reference):
             print(spec.citation)
             print(spec.url)
             print(f'{{panel.n_control}} donors; {{panel.n_pre}} pre-periods; {{panel.n_post}} post-periods')
-            data.head()
         """),
         markdown("""
             ## Reference specification and numerical check
@@ -187,17 +187,17 @@ def build(name, title, description, reference):
         code(f"""
             figure_details = {FIGURE_DETAILS[name]!r}
             benchmark = LITERATURE_BENCHMARKS[name]
-            # Works when the kernel starts in either the repository or notebook folder.
-            example_dir = Path.cwd() if Path.cwd().name == 'empirical_examples' else Path.cwd() / 'empirical_examples'
-            figure_dir = Path(os.environ.get('PYSYNTH_FIGURE_DIR', example_dir / 'figures')) / name
-            figure_dir.mkdir(parents=True, exist_ok=True)
+            cwd = Path.cwd()
+            root = cwd.parent if cwd.name == 'empirical_examples' else cwd
+            output_dir = root / 'outputs' / 'empirical_examples' / name
+            output_dir.mkdir(parents=True, exist_ok=True)
+            versions.to_csv(output_dir / f'{{name}}-versions.csv')
+            warning_rows = []
 
             def export_figure(fig, kind):
-                paths = save_figure(fig, figure_dir / f'{{name}}-{{kind}}')
-                paths_text = ' · '.join(
-                    f'`{{os.path.relpath(p, example_dir)}}`' for p in paths
-                )
-                display(Markdown('Local exports after execution · ' + paths_text + f' · [Literature source]({{benchmark.source_url}})'))
+                paths = save_figure(fig, output_dir / f'{{name}}-{{kind}}')
+                paths_text = ' · '.join(f'`{{p.relative_to(root).as_posix()}}`' for p in paths)
+                display(Markdown('Project exports · ' + paths_text + f' · [Literature source]({{benchmark.source_url}})'))
                 return paths
 
             def display_audit(title, *tables):
@@ -211,6 +211,7 @@ def build(name, title, description, reference):
                 if records:
                     counts = Counter((w.category.__name__, str(w.message)) for w in records)
                     rows = [(kind, message, count) for (kind, message), count in counts.items()]
+                    warning_rows.extend((section, *row) for row in rows)
                     display_audit(f'{{section}} warnings ({{len(records)}} emitted)',
                                   pd.DataFrame(rows, columns=['Category', 'Message', 'Count']))
 
@@ -239,7 +240,9 @@ def build(name, title, description, reference):
 
             references = matched_references(reference, additional=additional)
             reference_table = reference_comparison_table(references)
-            reference_table.to_csv(figure_dir / f'{{name}}-references.csv', index=False)
+            reference_table.to_csv(output_dir / f'{{name}}-references.csv', index=False)
+            replication_checks = pd.Series(report, name='Replication check')
+            replication_checks.to_csv(output_dir / f'{{name}}-replication-checks.csv', index_label='statistic')
             ax = plot_paths(
                 reference,
                 title=figure_details['case'],
@@ -255,7 +258,7 @@ def build(name, title, description, reference):
             reference_files = export_figure(ax.figure, 'reference')
             display_warnings('Historical fit and paper inference', reference_warnings)
             display_audit('Reference values and numerical replication checks',
-                          reference_table, pd.Series(report, name='Replication check'))
+                          reference_table, replication_checks)
         """),
         markdown(
             "## Fit all applicable methods on a common sample\n\n"
@@ -333,7 +336,7 @@ def build(name, title, description, reference):
             elif name == 'kansas':
                 references = matched_references(results['Augmented SCM'])
             diagnostics = {label: fit.metadata for label, fit in results.items()}
-            (figure_dir / f'{name}-diagnostics.json').write_text(
+            (output_dir / f'{name}-diagnostics.json').write_text(
                 json.dumps(diagnostics, indent=2, default=str) + chr(10)
             )
             display_labels = {
@@ -362,7 +365,7 @@ def build(name, title, description, reference):
                 references=references,
                 note=figure_details['comparison_note'] + ' Points are estimates without confidence intervals; RMSE is descriptive.',
             )
-            comparison.to_csv(figure_dir / f'{name}-estimates.csv', float_format='%.12g')
+            comparison.to_csv(output_dir / f'{name}-estimates.csv')
             plt.show()
             comparison_files = export_figure(fig, 'comparison')
             display_warnings('Estimator comparison', comparison_warnings)
@@ -431,9 +434,9 @@ def build(name, title, description, reference):
                     horizon=validation_horizon,
                 )
             validation = selection.validation
-            validation.summary.to_csv(figure_dir / f'{name}-validation-summary.csv')
-            validation.scores.to_csv(figure_dir / f'{name}-validation-folds.csv', index=False)
-            validation.predictions.to_csv(figure_dir / f'{name}-validation-predictions.csv', index=False)
+            validation.summary.to_csv(output_dir / f'{name}-validation-summary.csv')
+            validation.scores.to_csv(output_dir / f'{name}-validation-folds.csv', index=False)
+            validation.predictions.to_csv(output_dir / f'{name}-validation-predictions.csv', index=False)
             fig, axes = plot_backtest(
                 validation, title=figure_details['case'] + ' · pretreatment validation',
                 units=figure_details['units'],
@@ -441,13 +444,15 @@ def build(name, title, description, reference):
             plt.show()
             validation_files = export_figure(fig, 'validation')
             display_warnings('Pretreatment validation', validation_warnings)
+            selected_fit = pd.Series({'Selected estimator': selection.selected_name,
+                                      'Full-panel selected ATT': selection.estimate.att}, name='Selection')
+            selected_fit.to_csv(output_dir / f'{name}-selection.csv', index_label='statistic')
             display_audit(
                 'Validation scores, fold definitions and selected fit',
                 validation.summary,
                 validation.scores[['model', 'fold', 'training_end', 'validation_start',
                                    'validation_end', 'validation_rmse']],
-                pd.Series({'Selected estimator': selection.selected_name,
-                           'Full-panel selected ATT': selection.estimate.att}, name='Selection'),
+                selected_fit,
             )
         """),
         markdown(
@@ -479,8 +484,8 @@ def build(name, title, description, reference):
                     '2SISC k=10': partial(TwoStageIndividualSC, n_neighbors=10),
                     'SDID': SyntheticDID,
                 }})
-            sensitivity.table.to_csv(figure_dir / f'{{name}}-donor-sensitivity.csv', index=False)
-            sensitivity.summary.to_csv(figure_dir / f'{{name}}-donor-sensitivity-summary.csv')
+            sensitivity.table.to_csv(output_dir / f'{{name}}-donor-sensitivity.csv', index=False)
+            sensitivity.summary.to_csv(output_dir / f'{{name}}-donor-sensitivity-summary.csv')
             fig, axes = plot_donor_sensitivity(
                 sensitivity, title=figure_details['case'] + ' · donor sensitivity',
                 units=figure_details['units'],{donor_display_names}
@@ -551,12 +556,12 @@ def build(name, title, description, reference):
                       f'{len(reference_uncertainty.draws)} draws before the stopping rule.')
             display(budget_comparison)
             display_warnings('SDID inference', inference_warnings)
-            budget_comparison.to_csv(figure_dir / f'{name}-sdid-budget-comparison.csv')
+            budget_comparison.to_csv(output_dir / f'{name}-sdid-budget-comparison.csv')
             convergence = pd.concat({
                 label: pd.json_normalize(fit.metadata['solver_diagnostics'])
                 for label, fit in [('Reference cap', reference_uncertainty), ('Extended cap', uncertainty)]
             }, names=['Run', 'Draw']).reset_index()
-            convergence.to_csv(figure_dir / f'{name}-sdid-convergence.csv', index=False)
+            convergence.to_csv(output_dir / f'{name}-sdid-convergence.csv', index=False)
             inference = pd.Series({
                 'SDID ATT': results['Synthetic DID'].att,
                 'Placebo standard error': uncertainty.standard_error,
@@ -566,10 +571,10 @@ def build(name, title, description, reference):
                 'Capped resample fits': uncertainty.metadata['capped_draws'],
             }, name='SDID inference')
             display(inference)
-            inference.to_csv(figure_dir / f'{name}-sdid-inference.csv')
-            np.savetxt(figure_dir / f'{name}-sdid-resamples.csv', uncertainty.resamples, delimiter=',', fmt='%d')
-            np.savetxt(figure_dir / f'{name}-sdid-draws.csv', uncertainty.draws, delimiter=',')
-            np.savetxt(figure_dir / f'{name}-sdid-reference-draws.csv', reference_uncertainty.draws, delimiter=',')
+            inference.to_csv(output_dir / f'{name}-sdid-inference.csv')
+            np.savetxt(output_dir / f'{name}-sdid-resamples.csv', uncertainty.resamples, delimiter=',', fmt='%d')
+            np.savetxt(output_dir / f'{name}-sdid-draws.csv', uncertainty.draws, delimiter=',')
+            np.savetxt(output_dir / f'{name}-sdid-reference-draws.csv', reference_uncertainty.draws, delimiter=',')
         """),
         markdown("""
             ## Inspect the donor coefficients
@@ -582,7 +587,12 @@ def build(name, title, description, reference):
         """),
         code("""
             weights = pd.concat({label: fit.weights for label, fit in results.items()}, axis=1)
-            weights.loc[weights.abs().max(axis=1).sort_values(ascending=False).index].head(15).round(4)
+            weights = weights.loc[weights.abs().max(axis=1).sort_values(ascending=False).index]
+            weights.to_csv(output_dir / f'{name}-donor-weights.csv', index_label='donor')
+            pd.DataFrame(warning_rows, columns=['Section', 'Category', 'Message', 'Count']).to_csv(
+                output_dir / f'{name}-warnings.csv', index=False,
+            )
+            weights.head(15).round(4)
         """),
         markdown("""
             ## Interpretation, exports and reproducibility

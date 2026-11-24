@@ -10,17 +10,23 @@ import pytest
 pytest.importorskip("nbformat")
 
 
-@pytest.mark.parametrize("name", ["basque", "california", "germany", "kansas"])
-def test_generated_code_compiles_and_diagnostics_are_valid_json(name, monkeypatch, tmp_path):
+@pytest.fixture
+def generator(monkeypatch, tmp_path):
     path = Path(__file__).parents[1] / "scripts/create_notebooks.py"
     spec = importlib.util.spec_from_file_location("notebook_generator", path)
     generator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(generator)
-    notebooks = []
-    monkeypatch.setattr(generator.nbf, "write", lambda nb, _: notebooks.append(nb))
+    monkeypatch.setattr(generator, "ROOT", tmp_path)
+    return generator
+
+
+@pytest.mark.parametrize("name", ["basque", "california", "germany", "kansas"])
+def test_generated_code_compiles_and_diagnostics_are_valid_json(name, generator, tmp_path):
     generator.build(name, *generator.EXAMPLES[name])
+    path = tmp_path / "empirical_examples" / f"{name}.ipynb"
+    notebook = generator.nbf.read(path, as_version=4)
     writes = 0
-    for cell in notebooks[0].cells:
+    for cell in notebook.cells:
         if cell.cell_type != "code":
             continue
         source = "\n".join(line for line in cell.source.splitlines() if not line.startswith("%"))
@@ -32,7 +38,7 @@ def test_generated_code_compiles_and_diagnostics_are_valid_json(name, monkeypatc
                     eval(
                         compile(statement, str(path), "eval"),
                         {
-                            "figure_dir": tmp_path,
+                            "output_dir": tmp_path,
                             "name": name,
                             "diagnostics": {"estimator": {"iterations": 10}},
                             "json": json,
@@ -43,3 +49,55 @@ def test_generated_code_compiles_and_diagnostics_are_valid_json(name, monkeypatc
     assert json.loads((tmp_path / f"{name}-diagnostics.json").read_text()) == {
         "estimator": {"iterations": 10}
     }
+
+
+@pytest.mark.parametrize("from_notebook_directory", [False, True])
+def test_empirical_export_paths_and_result_tables(
+    from_notebook_directory, generator, monkeypatch, tmp_path
+):
+    import pandas as pd
+
+    name = "california"
+    generator.build(name, *generator.EXAMPLES[name])
+    examples = tmp_path / "empirical_examples"
+    nb = generator.nbf.read(examples / f"{name}.ipynb", as_version=4)
+    monkeypatch.chdir(examples if from_notebook_directory else tmp_path)
+
+    # Execute the generated path setup and version export before model fitting.
+    source = next(cell.source for cell in nb.cells if "def export_figure(" in cell.source)
+    setup = source.split("def export_figure(")[0]
+    namespace = {
+        "Path": Path,
+        "name": name,
+        "LITERATURE_BENCHMARKS": {name: None},
+        "versions": pd.Series({"numpy": "test"}, name="version"),
+    }
+    exec(setup, namespace)
+    destination = tmp_path / "outputs" / "empirical_examples" / name
+    assert namespace["output_dir"] == destination
+    assert (destination / f"{name}-versions.csv").is_file()
+    assert not (examples / "figures").exists()
+
+    # Every plot and result-file write in the notebook uses this directory.
+    types = {"to_csv", "savetxt", "write_text", "save_figure"}
+    filenames = []
+    for cell in nb.cells:
+        if cell.cell_type != "code":
+            continue
+        tree = ast.parse("\n".join(s for s in cell.source.splitlines() if not s.startswith("%")))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            method = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if method not in types:
+                continue
+            if method == "write_text":
+                output = func.value
+            else:
+                output = node.args[1 if method == "save_figure" else 0]
+            assert isinstance(output, ast.BinOp) and isinstance(output.op, ast.Div)
+            assert isinstance(output.left, ast.Name) and output.left.id == "output_dir"
+            filenames.append(ast.unparse(output.right))
+    for suffix in ["versions", "replication-checks", "selection", "donor-weights", "warnings"]:
+        assert any(f"-{suffix}.csv" in template for template in filenames)
