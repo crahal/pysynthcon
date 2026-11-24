@@ -10,13 +10,12 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 
 def _fit_in_r(matrices):
     # Each child embeds R once on its main thread. The host Python process
     # retains its own environment, R library paths and console callbacks.
     try:
+        import numpy as np
         from rpy2.rinterface_lib import callbacks
         from rpy2.robjects import FloatVector, baseenv
 
@@ -25,7 +24,7 @@ def _fit_in_r(matrices):
         package_description = exported("utils", "packageDescription")
     except Exception as exc:
         raise ImportError(
-            "Cannot load the local R Synth reference backend. Install the optional rpy2 "
+            "Cannot load the local R Synth reference backend. Install NumPy, the optional rpy2 "
             "bridge and R package Synth, and select its library with PYSYNTH_R_LIBRARY. "
             f"Loader error: {exc}"
         ) from exc
@@ -40,12 +39,15 @@ def _fit_in_r(matrices):
     # output. warn=1 delivers warnings during this call in our private process.
     diagnostics = []
     baseenv["options"](warn=1)
-    with callbacks.replace_in_module(callbacks, "consolewrite_warnerror", diagnostics.append):
-        try:
-            fit = synth(**args)
-        except Exception:
-            sys.stderr.write("".join(diagnostics))
-            raise
+    previous_console = callbacks.consolewrite_warnerror
+    callbacks.consolewrite_warnerror = diagnostics.append
+    try:
+        fit = synth(**args)
+    except Exception:
+        sys.stderr.write("".join(diagnostics))
+        raise
+    finally:
+        callbacks.consolewrite_warnerror = previous_console
     numeric = baseenv["as.numeric"]
     return {
         "weights": list(numeric(fit.rx2("solution.w"))),
@@ -60,13 +62,34 @@ def _fit_in_r(matrices):
     }
 
 
+def _worker_python():
+    from ._r import _checkout_root
+
+    configured = os.environ.get("PYSYNTH_R_PYTHON")
+    if configured is not None:
+        candidate = Path(configured).expanduser()
+    else:
+        executable = "Scripts/python.exe" if os.name == "nt" else "bin/python"
+        candidate = _checkout_root() / ".local/reference/python" / executable
+        if not candidate.is_file():
+            return sys.executable
+    if not candidate.is_file() or not os.access(candidate, os.X_OK):
+        raise ImportError(f"The selected R bridge Python is not executable: {candidate}")
+    # Preserve the venv path. Resolving its symlink would bypass the venv.
+    return str(candidate.absolute())
+
+
 def _run_synth(matrices, library):
     env = os.environ.copy()
     if library is not None:
         existing = env.get("R_LIBS")
         env["R_LIBS"] = os.pathsep.join([library, existing]) if existing else library
+    executable = _worker_python()
+    # A dedicated environment must use its own packages, even when Jupyter
+    # or the caller has set PYTHONPATH or PYTHONHOME for a different Python.
+    isolation = ["-I"] if executable != sys.executable else []
     child = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve())],
+        [executable, *isolation, str(Path(__file__).resolve())],
         input=json.dumps(matrices, allow_nan=False),
         capture_output=True,
         text=True,
@@ -93,6 +116,8 @@ class ReferenceSynthDataprep:
     r_library: str | Path | None = None
 
     def fit(self, panel):
+        import numpy as np
+
         from ._r import reference_library
         from .backends import _validate_dataprep
         from .results import make_estimate

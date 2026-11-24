@@ -1,12 +1,13 @@
 """The Python bridge preserves the native R Synth design and output labels."""
 
-from importlib.util import find_spec
+import os
+import sys
 
 import numpy as np
 import pytest
 
 from pysynth import Panel
-from pysynth._r_synth import ReferenceSynthDataprep
+from pysynth._r_synth import ReferenceSynthDataprep, _worker_python
 from pysynth.datasets import DATASETS, load_dataset
 from pysynth.replication import california_tobacco_estimator
 
@@ -26,6 +27,24 @@ def design(panel, donor_order, *, predictor_times=None):
         time_predictors_prior=pre if predictor_times is None else predictor_times,
         time_optimize_ssr=pre,
     )
+
+
+def test_reference_worker_selection_and_venv_path(tmp_path, monkeypatch):
+    monkeypatch.delenv("PYSYNTH_R_PYTHON", raising=False)
+    monkeypatch.setattr("pysynth._r._checkout_root", lambda: tmp_path)
+    assert _worker_python() == sys.executable
+    suffix = "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    local = tmp_path / ".local/reference/python" / suffix
+    local.parent.mkdir(parents=True)
+    local.touch(mode=0o755)
+    assert _worker_python() == str(local)
+    explicit = tmp_path / "other-python"
+    explicit.touch(mode=0o755)
+    monkeypatch.setenv("PYSYNTH_R_PYTHON", str(explicit))
+    assert _worker_python() == str(explicit)
+    monkeypatch.setenv("PYSYNTH_R_PYTHON", str(tmp_path / "missing"))
+    with pytest.raises(ImportError, match="not executable"):
+        _worker_python()
 
 
 def test_original_solver_order_and_panel_outcome_alignment(panel, monkeypatch):
@@ -70,8 +89,6 @@ def test_post_outcome_mismatch_and_post_predictors_rejected_before_running_r(pan
 
 @pytest.mark.r_reference
 def test_local_original_synth_fit_on_two_donors():
-    if find_spec("rpy2") is None:
-        pytest.skip("The optional rpy2 bridge is unavailable")
     panel = Panel(
         np.array([[4, 0, 1], [5, 1, 2], [6, 2, 3], [8, 4, 7]]), 2, 3, units=("B", "A", "T")
     )
@@ -93,8 +110,6 @@ def test_local_original_synth_fit_on_two_donors():
 @pytest.mark.r_reference
 def test_california_matches_independent_native_r_dataprep_and_synth():
     pytest.importorskip("pysyncon")
-    if find_spec("rpy2") is None:
-        pytest.skip("The optional rpy2 bridge is unavailable")
     tobacco = load_dataset("california_tobacco")
     panel = DATASETS["california_tobacco"].panel(tobacco)
     try:
