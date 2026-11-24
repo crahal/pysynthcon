@@ -6,7 +6,8 @@ PySynth provides a common Python interface to classical synthetic control,
 SCUL, individual synthetic control, and synthetic difference-in-differences.
 It builds on [pysyncon](https://github.com/sdfordham/pysyncon) and
 [SyntheticControlMethods](https://pypi.org/project/SyntheticControlMethods/),
-with native implementations of the three additional approaches requested here.
+with the original R fitting procedures for SCUL and ISC, and a validated
+Python implementation of the original SDID algorithms.
 
 This is a research-oriented **0.1.0** release. It supports balanced panels,
 explicit donor pools, one treatment onset per panel, and case-specific panels
@@ -32,10 +33,14 @@ For the tested academic replication environment, use Python 3.11 or 3.12:
 ```bash
 python -m pip install -r requirements-replication.txt
 python -m pip install -e '.[docs,dev]'
+# Ubuntu/Debian: install R, gfortran and libglpk-dev first.
+python scripts/install_r_references.py --library .r-library
 ```
 
-Core estimators need neither R nor the optional upstream packages. The
-`backends` extra pins a pysyncon revision containing replication fixes.
+SCUL and ISC now require R and the pinned reference packages; they no longer
+silently use simplified Python substitutes. Follow the [R installation
+guide](docs/reference_backends.md) before running the complete example. SCM, DID and SDID
+remain available without R. The `backends` extra pins pysyncon replication fixes.
 
 ## A complete example
 
@@ -50,7 +55,7 @@ panel = DATASETS["california"].panel(data)
 
 models = {
     "SCM": SyntheticControl(),
-    "SCUL": SCUL(initial_window=10, horizon=2),
+    "SCUL": SCUL(initial_window=5, horizon=12),
     "ISC": IndividualSC(),
     "2SISC": TwoStageIndividualSC(n_neighbors=10),
     "SDID": SyntheticDID(),
@@ -102,17 +107,18 @@ For individual-specific timing, build one eligible panel per case and use
 | `PySyncon("augsynth")` | Augmented SCM | Ridge augmentation and upstream cross-validation |
 | `PySyncon("pensynth")` | Penalized SCM | Explicit penalty in `options` |
 | `PySyncon("robust")` | Robust SCM | Explicit rank/threshold and ridge in `options` |
-| `SCM("synth")` | SyntheticControlMethods SCM | Corrected predictor objective; deterministic single start |
+| `SCM("synth")` | SyntheticControlMethods SCM | All pre-lags; ten starts; checked solver recovery |
 | `SCM("diffsynth")` | Differenced SCM | Local pandas compatibility fix and level correction |
 
 See [method definitions](docs/methods.md) and [backend details](docs/backends.md).
 Vanilla ISC uses every eligible donor in each individual's panel. 2SISC first
 selects up to `n_neighbors` donors using pretreatment Euclidean distance, then
-fits the synthetic-control weights within that group. Both support optional
-donor resampling and event-time aggregation. To migrate the initial API,
+fits the synthetic-control weights within that group. Both use MSCMT and 50 donor resamples by default, and support event-time
+aggregation. To migrate the initial API,
 replace `IndividualSC(n_neighbors=k)` with `TwoStageIndividualSC(n_neighbors=k)`.
 The [individual-method guide](docs/methods.md#individual-synthetic-control-isc)
-distinguishes these implementations from the original MSCMT survey workflow.
+describes the reference algorithms and the survey-specific choices needed
+for a study replication.
 
 ## Empirical notebooks
 
@@ -136,6 +142,12 @@ references, and new applications. They do **not** claim to reproduce SCUL's
 original scanner-data study or the ISC/costofcare survey study. The [replication
 guide](docs/replication.md) states exact benchmarks, tolerances and limitations.
 
+Full fitting can still be quick on these small aggregate panels. With only
+the outcome as one predictor group, MSCMT itself has no nontrivial predictor-
+weight search; fitting many individuals with additional covariates is more
+costly. The notebooks report elapsed times and full fitting settings so the
+computational work is inspectable.
+
 ## Publication figures
 
 Compare fitted estimators with shared-scale effect panels and an aligned
@@ -155,7 +167,11 @@ save_figure(fig, "figures/california-effects")
 
 ![California estimator comparison](empirical_examples/figures/california/california-comparison.png)
 
-Every notebook exports three figures and the summary values as CSV.
+Every notebook exports three figures with **source / reproduction / difference**
+annotations using matching specifications and periods. CSVs record the source
+comparisons, full estimates, runtimes, and changes from the previous software
+version. Each notebook also runs the original SDID placebo variance procedure
+with 200 resamples.
 Browse the [downloadable figures](empirical_examples/figures/README.md) or
 the [plotting guide](docs/plotting.md). Dots are point estimates, without
 confidence intervals; shaded time regions identify the post-period.

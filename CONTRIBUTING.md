@@ -1,5 +1,15 @@
 # Contributing to PySynth
 
+Reference-method changes must preserve the full fitting specification: no
+reduced restart counts, shortened lag histories, fixed predictor metrics, or
+substituted tuning rules in replication examples. Run the independent original
+R checks for affected methods. Install their pinned dependencies with
+`python scripts/install_r_references.py --library .r-library`; R, a Fortran
+compiler and GLPK development headers are required. Keep numerical recovery
+diagnostics and distinguish algorithm parity from replication of a study's data
+and covariate design. New figure benchmarks need a source, matched window,
+statistic, units, and an explicit precision or approximation label.
+
 Thank you for helping make synthetic control research easier to reproduce.
 Report bugs or propose changes through the repository's GitHub issues and pull
 requests. Include a minimal reproducible panel, versions, the complete error,

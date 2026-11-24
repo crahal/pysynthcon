@@ -7,6 +7,12 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Added
 
+- Original synthdid bootstrap, jackknife and placebo variance procedures,
+  independent draw-by-draw R checks, and the reference `sc_estimate` variant.
+- Paired source/reproduction/difference annotations with matched statistics
+  and periods; archived earlier-software comparisons, fitting times and
+  optimizer diagnostics in every notebook.
+- Pinned R reference installer and original SCUL/MSCMT integration checks.
 - Sourced `LiteratureBenchmark` annotations on every empirical figure, with
   compatible mean-effect guides, linked citations and explicit source windows.
   Paper findings are distinguished from the authors' Kansas worked example.
@@ -21,7 +27,7 @@ versioning; the API may evolve during the 0.x research releases.
   summary values, sample compatibility, font export and physical dimensions.
 - Explicit `TwoStageIndividualSC` estimator, labelled **Two-Stage Individual
   Synthetic Control (2SISC)**: nearest-neighbor screening on pretreatment
-  features, followed by convex synthetic-control fitting within that group.
+  features, followed by the original ISC procedure within that group.
 - Separate ISC and 2SISC rows in all four executed empirical notebooks,
   bringing each comparison to twelve interfaces.
 - Donor-selection metadata and analytic checks for full-pool equivalence,
@@ -29,8 +35,24 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Changed
 
+- SCUL defaults to the original R `lambda.median` procedure with fold-specific
+  glmnet paths. ISC and 2SISC default to MSCMT and 50 donor resamples.
+  R dependencies are now required for these defaults; the previous native
+  approximations require explicit selection.
+- pysyncon SCM estimates predictor importance instead of injecting fixed V.
+  SyntheticControlMethods uses all pre-outcome lags and all ten original starts.
+- Nested SCM optimization now checks termination, improves inner numerical
+  conditioning, differentiates the same objective through a certified inner
+  optimum, and recovers failed line searches or unavailable derivatives with
+  bounded Powell. Failed recovery raises rather than returning an unchecked fit.
+- ISC preserves the original R donor-sampling stream across individuals.
+  Failed final MSCMT WNNLS solves are repaired on the same weighted simplex
+  objective, with independently checked optimality gaps and recorded diagnostics.
+- Every empirical notebook runs full fits and 200 original SDID placebo refits.
+- California also reproduces the paper's 8.4 SDID standard error using the
+  authors' exact R resampling plan; every resample is exported for inspection.
 - German figure units now state PPP-adjusted current US dollars, following
-  the authors' 2025 erratum. No data or estimator results changed.
+  the authors' 2025 erratum; the unit-label correction does not alter the data.
 - `Estimate.plot()` now uses the publication style and accepts plot labels
   and captions while retaining its Axes return value.
 - Notebook generation uses stable cell IDs and public plotting functions;

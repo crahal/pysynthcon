@@ -87,7 +87,10 @@ def build(name, title, description, reference):
         markdown(
             f"# {title}\n\n{description}\n\n{reference}\n\n"
             "Run from a checkout installed using `requirements-replication.txt` and "
-            "`pip install -e .`. The notebook downloads immutable public data with "
+            "`pip install -e .`. Install the original R dependencies with "
+            "`python scripts/install_r_references.py --library .r-library` after "
+            "following [the R setup guide](../docs/reference_backends.md). "
+            "The notebook downloads immutable public data with "
             "**requests**, checks the reference specification, and exports three "
             "publication figures as PDF, SVG and 300 dpi PNG. "
             "See [the replication guide](../docs/replication.md) and "
@@ -96,8 +99,10 @@ def build(name, title, description, reference):
         code("""
             %matplotlib inline
             import hashlib
-            from dataclasses import replace
             import os
+            import json
+            import time
+            from dataclasses import replace
             from io import BytesIO
             from pathlib import Path
             from importlib.metadata import version
@@ -114,7 +119,11 @@ def build(name, title, description, reference):
                 plot_paths, plot_effects, plot_comparison, save_figure,
             )
             from pysynth.datasets import DATASETS
-            from pysynth.replication import LITERATURE_BENCHMARKS, replicate, check_replication
+            from pysynth.replication import (
+                LITERATURE_BENCHMARKS, replicate, check_replication, reference_comparisons,
+                california_paper_inference,
+            )
+            from pysynth.plotting import reference_comparison_table
 
             pd.Series({p: version(p) for p in [
                 'pysynth-control', 'numpy', 'scipy', 'pandas', 'matplotlib',
@@ -161,6 +170,7 @@ def build(name, title, description, reference):
             # Works when the kernel starts in either the repository or notebook folder.
             example_dir = Path.cwd() if Path.cwd().name == 'empirical_examples' else Path.cwd() / 'empirical_examples'
             figure_dir = Path(os.environ.get('PYSYNTH_FIGURE_DIR', example_dir / 'figures')) / name
+            figure_dir.mkdir(parents=True, exist_ok=True)
 
             def export_figure(fig, kind):
                 paths = save_figure(fig, figure_dir / f'{{name}}-{{kind}}')
@@ -173,6 +183,31 @@ def build(name, title, description, reference):
 
             reference = replicate(name, data)
             report = check_replication(name, reference)
+            additional = None
+            paper_uncertainty = None
+            if name == 'california':
+                additional = {{'SC': SyntheticDID().fit_sc(panel), 'DID': DifferenceInDifferences().fit(panel)}}
+                paper_uncertainty = california_paper_inference(panel, reference)
+                se_reference = paper_uncertainty.metadata['paper_replication']['reference_standard_error']
+                np.testing.assert_allclose(paper_uncertainty.standard_error, se_reference, atol=1e-9, rtol=0)
+                assert abs(additional['SC'].att - (-19.6)) <= 0.05
+                assert abs(additional['DID'].att - (-27.3)) <= 0.05
+                report.update({{'SE estimate': paper_uncertainty.standard_error,
+                               'SE reference': se_reference, 'SE absolute tolerance': 1e-9}})
+
+            def matched_references(fit, additional=None):
+                refs = reference_comparisons(name, fit, additional=additional)
+                if paper_uncertainty is not None:
+                    refs = [replace(r, context=r.context + (
+                        f' SE: paper 8.4; reproduced {{paper_uncertainty.standard_error:.3f}} '
+                        '(authors’ seed 12345).'
+                    )) if r.label == 'SDID' else r for r in refs]
+                return refs
+
+            references = matched_references(reference, additional=additional)
+            reference_table = reference_comparison_table(references)
+            display(reference_table)
+            reference_table.to_csv(figure_dir / f'{{name}}-references.csv', index=False)
             display(pd.Series(report, name='Replication check'))
             ax = plot_paths(
                 reference,
@@ -182,7 +217,7 @@ def build(name, title, description, reference):
                 observed_label='Observed',
                 counterfactual_label=figure_details['reference'],
                 intervention_label=figure_details['onset'],
-                benchmark=benchmark,
+                references=references,
                 note=figure_details['reference_note'],
             )
             reference_files = export_figure(ax.figure, 'reference')
@@ -192,30 +227,38 @@ def build(name, title, description, reference):
             ## Fit all applicable methods on a common sample
 
             Every comparison uses the same outcome panel, eligible donors and treatment
-            date. The native SCM assigns equal importance to pre-outcome periods;
-            the pysyncon SCM comparison fixes predictor importance after row scaling.
-            The SyntheticControlMethods adapter uses one initialization and at most
-            ten evenly spaced outcome-lag predictors plus the outcome mean. Penalized
-            and robust SCM use the illustrative tuning values shown below. SCUL selects
-            its penalty by rolling validation within the pretreatment period.
+            date. Classical pysyncon SCM estimates predictor importance by nested
+            optimization. SyntheticControlMethods uses **all pretreatment outcome
+            lags and all ten optimization starts**, with checked numerical recovery
+            when a gradient line search fails. Neither adapter truncates the fit
+            to accelerate this example. Native outcome SCM is retained as the
+            explicitly named equal-period baseline.
 
-            **ISC and 2SISC here use a fixed matching metric, without MSCMT's outer
-            predictor-weight optimization or donor resampling.** Vanilla ISC uses the
-            full eligible pool; 2SISC first selects up to ten nearest donors by
-            pretreatment Euclidean distance. For a single treated case, vanilla ISC
-            therefore coincides with native outcome SCM. This is not a reproduction
-            of the full Vagni–Breen or costofcare survey workflow.
+            SCUL calls the pinned original R functions and glmnet, selecting
+            `lambda.median` from fold-specific paths. Its rolling validation windows
+            are stated in code. Basque has only ten pretreatment observations, so
+            its validation horizon must be shorter than its 28-period post window.
+            Penalized and robust SCM retain the explicit illustrative tuning values
+            shown below; these are new applications, not paper-specific calibrations.
 
-            SDID uses donor post-period outcomes to estimate time weights; robust SCM
-            denoises donors across the panel. Neither fits weights to treated
-            post-treatment outcomes. The newer-method rows are new applications,
-            not estimates published in their development papers. Warnings remain
-            visible and no failed method is silently omitted.
+            ISC calls **MSCMT**, using the costofcare bootstrap workflow with **50
+            donor resamples**. 2SISC first selects up to ten nearest donors, then
+            runs the same ISC procedure within that group. These aggregate panels
+            do not provide the survey-specific demographic predictors, eligibility
+            rules, or individual sampling design of the original ISC studies.
+
+            SDID uses donor post-period outcomes to estimate time weights; robust
+            SCM uses them for donor denoising. Neither fits to treated post-outcomes.
+            Each model runs in full; failures stop execution. Elapsed fitting times
+            and optimizer diagnostics are exported alongside the estimates.
         """),
         code("""
+            scul_windows = {'california': (5, 12), 'basque': (3, 5),
+                            'germany': (14, 14), 'kansas': (16, 16)}
+            initial, horizon = scul_windows[name]
             models = {
                 'Outcome SCM': SyntheticControl(),
-                'SCUL': SCUL(initial_window=max(3, panel.n_pre // 2), horizon=1),
+                'SCUL': SCUL(initial_window=initial, horizon=horizon),
                 'ISC (full donor pool)': IndividualSC(),
                 '2SISC (nearest 10)': TwoStageIndividualSC(n_neighbors=10),
                 'Synthetic DID': SyntheticDID(),
@@ -224,11 +267,27 @@ def build(name, title, description, reference):
                 'Augmented SCM': PySyncon('augsynth'),
                 'Penalized SCM (0.01)': PySyncon('pensynth', options={'lambda_': 0.01}),
                 'Robust SCM (rank 3, ridge 0.1)': PySyncon('robust', options={'lambda_': 0.1, 'sv_count': 3}),
-                'SyntheticControlMethods SCM': SCM('synth', n_lags=10),
-                'Differenced SCM': SCM('diffsynth', n_lags=10),
+                'SyntheticControlMethods SCM': SCM('synth'),
+                'Differenced SCM': SCM('diffsynth'),
             }
-            results = {label: model.fit(panel) for label, model in models.items()}
+            results, elapsed = {}, {}
+            for label, model in models.items():
+                started = time.perf_counter()
+                results[label] = model.fit(panel)
+                elapsed[label] = time.perf_counter() - started
+                print(f'{label}: {elapsed[label]:.2f} seconds')
             comparison = compare(results)
+            comparison['elapsed_seconds'] = pd.Series(elapsed)
+            if name == 'california':
+                references = matched_references(results['Synthetic DID'], additional={
+                    'SC': additional['SC'], 'DID': results['DID'],
+                })
+            elif name == 'kansas':
+                references = matched_references(results['Augmented SCM'])
+            diagnostics = {label: fit.metadata for label, fit in results.items()}
+            (figure_dir / f'{name}-diagnostics.json').write_text(
+                json.dumps(diagnostics, indent=2, default=str) + '\\n'
+            )
             display_labels = {
                 'ISC (full donor pool)': 'ISC · full donor pool',
                 '2SISC (nearest 10)': '2SISC · nearest 10',
@@ -250,10 +309,10 @@ def build(name, title, description, reference):
             estimated confidence intervals in these figures**. Better pretreatment
             fit alone does not establish causal credibility.
 
-            Where the source reports a mean effect in the same units and averaging
-            window, the ochre dotted line marks that literature benchmark on the ATT
-            axis only. It is a result from the named specification, not a target for
-            every estimator or an uncertainty interval.
+            The reference strip pairs each source result with its matched reproduction
+            and signed difference, using the same statistic and evaluation window.
+            Approximate paper headlines and numerical upstream examples are labelled
+            separately. They are not targets for every estimator.
         """),
         code("""
             fig, axes = plot_comparison(
@@ -261,9 +320,7 @@ def build(name, title, description, reference):
                 title=figure_details['case'],
                 subtitle=figure_details['periods'],
                 units=figure_details['units'],
-                benchmark=replace(benchmark, context=benchmark.context + (
-                    ' Dotted line: source mean ATT.' if benchmark.value is not None else ''
-                )),
+                references=references,
             )
             comparison_files = export_figure(fig, 'comparison')
             comparison.to_csv(figure_dir / f'{name}-estimates.csv', float_format='%.12g')
@@ -278,8 +335,8 @@ def build(name, title, description, reference):
             line and shaded region identify the common treatment onset and post-period.
             Shading does not represent uncertainty. Calendar spacing is preserved,
             including quarterly observations. Panel labels replace repeated legends.
-            Ochre dotted segments, where present, mark the source's average effect
-            over the post-period; they are not published period-by-period trajectories.
+            The source/reproduction strip uses matched specifications and windows.
+            Any numeric reference guide applies only to its matched estimator.
         """),
         code("""
             fig, axes = plot_effects(
@@ -287,13 +344,56 @@ def build(name, title, description, reference):
                 title=figure_details['case'],
                 subtitle='Estimated effect paths · shared scales across all twelve methods',
                 ylabel=figure_details['effect'], xlabel='Year',
-                benchmark=replace(benchmark, context=benchmark.context + (
-                    ' Dotted segments: source mean, not period-specific effects.' if benchmark.value is not None else ''
-                )),
+                references=references,
                 note=figure_details['periods'] + '. Shading marks the post-period; no uncertainty intervals are shown.',
             )
             effects_files = export_figure(fig, 'effects')
             plt.show()
+        """),
+        markdown("""
+            ## Original SDID placebo inference and changes from the previous version
+
+            The original synthdid placebo variance estimator refits donor and time
+            weights in each of 200 resamples. The seed is fixed. These standard errors
+            apply to SDID alone; they are not intervals for the other methods.
+            The bootstrap and jackknife are undefined with only one treated unit.
+            California uses the authors' exact R sampling plan (seed 12345),
+            reproducing the paper's standard error 8.4 at its printed precision.
+            The other examples use NumPy seed 0 for reproducible new applications.
+
+            The second table compares this full fit with the archived software
+            outputs at commit `32d4f97`. Those earlier results used shortcuts; they
+            are **not published academic benchmarks**. The difference is current
+            ATT minus the previous software ATT on the same common sample.
+        """),
+        code("""
+            if paper_uncertainty is not None:
+                np.testing.assert_allclose(results['Synthetic DID'].att, reference.att, atol=1e-12)
+                uncertainty = paper_uncertainty
+            else:
+                uncertainty = SyntheticDID().inference(
+                    panel, method='placebo', replications=200, random_state=0,
+                    estimate=results['Synthetic DID'],
+                )
+            inference = pd.Series({
+                'SDID ATT': results['Synthetic DID'].att,
+                'Placebo standard error': uncertainty.standard_error,
+                '95% normal interval': uncertainty.confidence_interval(),
+                'Replications': 200,
+            }, name='SDID inference')
+            display(inference)
+            inference.to_csv(figure_dir / f'{name}-sdid-inference.csv')
+            np.savetxt(figure_dir / f'{name}-sdid-resamples.csv', uncertainty.resamples, delimiter=',', fmt='%d')
+            np.savetxt(figure_dir / f'{name}-sdid-draws.csv', uncertainty.draws, delimiter=',')
+            previous_path = example_dir / 'baselines' / '32d4f97' / f'{name}-estimates.csv'
+            previous = pd.read_csv(previous_path, index_col=0)
+            changes = pd.DataFrame({
+                'Previous software ATT': previous['att'],
+                'Full method ATT': comparison['att'],
+            })
+            changes['Change'] = changes['Full method ATT'] - changes['Previous software ATT']
+            display(changes.round(5))
+            changes.to_csv(figure_dir / f'{name}-changes.csv', float_format='%.12g')
         """),
         markdown("""
             ## Inspect the donor coefficients
@@ -315,7 +415,7 @@ def build(name, title, description, reference):
             untreated path. These are point estimates under different restrictions,
             tuning choices and identifying assumptions. They are not an uncertainty
             distribution. The historical reference check is distinct from the new
-            comparison specifications and their stated simplifications.
+            comparison specifications and their stated tuning choices.
 
             Each figure is exported at **7.2 inches wide** in three formats: PDF with
             embedded fonts, SVG with editable text, and 300 dpi PNG. The links beside

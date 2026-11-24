@@ -19,6 +19,13 @@ from nbclient import NotebookClient
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--timeout", type=int, default=14400, help="Per-cell timeout in seconds")
+    parser.add_argument(
+        "--examples",
+        nargs="+",
+        choices=["basque", "california", "germany", "kansas"],
+        help="Execute selected examples; by default execute all four",
+    )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "pysynth-mpl"))
@@ -27,6 +34,8 @@ def main():
     if args.output_dir is not None:
         os.environ["PYSYNTH_FIGURE_DIR"] = str(args.output_dir.resolve() / "figures")
     for path in sorted((root / "empirical_examples").glob("*.ipynb")):
+        if args.examples is not None and path.stem not in args.examples:
+            continue
         print(f"Executing {path.name}", flush=True)
         nb = nbformat.read(path, as_version=4)
         manager = KernelManager(kernel_name="python3")
@@ -38,7 +47,7 @@ def main():
             "{connection_file}",
         ]
         client = NotebookClient(
-            nb, timeout=1200, km=manager, resources={"metadata": {"path": str(root)}}
+            nb, timeout=args.timeout, km=manager, resources={"metadata": {"path": str(root)}}
         )
         client.execute()
         destination = path if args.output_dir is None else args.output_dir / path.name
