@@ -20,9 +20,9 @@ versioning; the API may evolve during the 0.x research releases.
 
 - Place the fitted mean ATT in the lower-left corner of effect panels and
   remove its arrow. The dotted line shows the mean over the treated periods.
-- Give effect panels with multiple source comparisons a dedicated row and
-  place their labels beside the curve. The Basque historical SCM panel now
-  shows the entire trajectory alongside the paper and R Synth comparisons.
+- Keep each estimator in one equally sized effect panel. The Basque example
+  shows all twelve fits in a three-column grid, with the paper and R Synth
+  comparisons printed inside the historical SCM panel.
 - Keep the ATT and pretreatment RMSE dots on evenly spaced rows when a fit
   has several reference comparisons. Numbered keys beside the estimator
   lead to the values and evaluation windows in the figure’s citation lines.

@@ -277,6 +277,13 @@ def _reference_fits(estimates, references):
     return result
 
 
+def _references_by_fit(references):
+    groups = {}
+    for ref in references:
+        groups.setdefault(id(ref.estimate), []).append(ref)
+    return groups
+
+
 def _source_numbers(references):
     sources = {}
     for ref in references:
@@ -299,7 +306,7 @@ def _direct_note(note, references, benchmark, *, include_citations=True):
     return "\n".join(lines) or None
 
 
-def _reference_text(ref, number, *, compact=False):
+def _reference_text(ref, number, *, compact=False, facet=False):
     source = {
         "Published": "Paper",
         "Original R software": "R Synth",
@@ -310,6 +317,9 @@ def _reference_text(ref, number, *, compact=False):
     unit = "%" if ref.statistic == "mean_percent_effect" else ""
     reported = prefix + _reference_number(ref.reference, ref.reference_precision) + unit
     reproduced = _reference_number(ref.reproduced, ref.precision) + unit
+    if facet:
+        source = "Paper" if source == "Fig. 1 headline" else source
+        return f"[{number}] {source} {reported} · fit {reproduced}"
     window = ref.window_label or f"{ref.window[0]}–{ref.window[1]}"
     key = f" [{number}]" if number is not None else ""
     if not ref.comparable:
@@ -321,8 +331,8 @@ def _reference_text(ref, number, *, compact=False):
     return f"{source} {reported} · fit {reproduced}\n{window} · {difference}{key}{scale}"
 
 
-def _comparison_source_notes(references, grouped):
-    """Fold multi-source values into their citation lines below both scales."""
+def _comparison_source_notes(references, grouped, *, in_panel=()):
+    """Key each source's checked window and scale to its fitted specification."""
     notes = []
     for (citation, url), number in _source_numbers(references).items():
         matches = [r for r in references if (r.citation, r.source_url) == (citation, url)]
@@ -330,7 +340,15 @@ def _comparison_source_notes(references, grouped):
         parts = []
         for ref in matches:
             if id(ref.estimate) in grouped:
-                detail = _reference_text(ref, None).replace("%\n% ", "% ").replace("\n", " · ")
+                if id(ref.estimate) in in_panel:
+                    window = ref.window_label or f"{ref.window[0]}–{ref.window[1]}"
+                    detail = f"{window} · {ref.units}"
+                    if ref.comparable:
+                        detail += f" · {_reference_difference(ref)}"
+                    else:
+                        detail = f"Fit window {detail}"
+                else:
+                    detail = _reference_text(ref, None).replace("%\n% ", "% ").replace("\n", " · ")
                 parts.append(f"{ref.label} · {detail}" if shared_source else detail)
         notes.append((f"[{number}] " + "  ·  ".join([*parts, citation]), url))
     return notes
@@ -345,12 +363,11 @@ def _reference_spacing(ref):
     return 0.6 + 0.4 * _reference_lines(ref)
 
 
-def _callout(ax, text, xy, *, width=36, fontsize=7.8, color=LITERATURE, url=None, gutter=None):
+def _callout(ax, text, xy, *, width=36, fontsize=7.8, color=LITERATURE, url=None):
     """Place a callout in open space. Only point to data for a numeric target."""
     original = text
     text = "\n".join(fill(line, width=width) for line in text.splitlines())
-    label_ax = ax if gutter is None else gutter
-    artist = label_ax.annotate(
+    artist = ax.annotate(
         text,
         xy=(0.5, 0.5) if xy is None else xy,
         xycoords="axes fraction" if xy is None else ax.transData,
@@ -371,7 +388,7 @@ def _callout(ax, text, xy, *, width=36, fontsize=7.8, color=LITERATURE, url=None
             "arrowstyle": "-",
             "color": color,
             "linewidth": 0.6,
-            "relpos": (0 if gutter is not None else 0.5, 0.5),
+            "relpos": (0.5, 0.5),
         }
         if xy is not None
         else None,
@@ -385,14 +402,10 @@ def _callout(ax, text, xy, *, width=36, fontsize=7.8, color=LITERATURE, url=None
     ax.figure._pysynth_direct_annotations = getattr(
         ax.figure, "_pysynth_direct_annotations", []
     ) + [artist]
-    if gutter is not None:
-        ax.figure._pysynth_reference_gutters[gutter].append(artist)
     return artist
 
 
-def _annotate_references(
-    ax, x, references, estimate, *, effects=False, small=False, color=BLUE, gutter=None
-):
+def _annotate_references(ax, x, references, estimate, *, effects=False, small=False, color=BLUE):
     matched = [ref for ref in references if ref.estimate is estimate]
     numbers = _source_numbers(references)
     if not matched:
@@ -422,6 +435,33 @@ def _annotate_references(
             )
             label.set_in_layout(False)
         return
+    if small and len(matched) > 1:
+        labels = []
+        keys = []
+        for ref in matched:
+            number = numbers[(ref.citation, ref.source_url)]
+            keys.append(str(number))
+            label = ax.text(
+                0,
+                0,
+                _reference_text(ref, number, facet=True),
+                transform=ax.transAxes,
+                ha="left",
+                va="bottom",
+                fontsize=7.4,
+                color=LITERATURE,
+                url=ref.source_url,
+                zorder=6,
+                bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.92, "pad": 0.8},
+            )
+            label.set_in_layout(False)
+            labels.append(label)
+        ax.figure._pysynth_facet_labels[ax] = (
+            id(estimate),
+            labels,
+            ", ".join(dict.fromkeys(keys)),
+        )
+        return
     # Each callout uses one actual source window; unlike a full-period ATT,
     # percentage and subset-window results never acquire a level-scale guide.
     for ref in matched:
@@ -431,8 +471,7 @@ def _annotate_references(
             # A percentage or contextual headline has no ordinate on a level-effect axis.
             xy = None
             if ref.comparable and ref.statistic == "mean_effect":
-                guide_position = middle if gutter is None else pos.stop - 1
-                xy = (x[guide_position], ref.reference)
+                xy = (x[middle], ref.reference)
         else:
             xy = (
                 x[middle],
@@ -445,56 +484,73 @@ def _annotate_references(
             width=29 if small else 47,
             fontsize=7.4 if small else 8,
             url=ref.source_url,
-            gutter=gutter,
         )
 
 
-def _layout_reference_gutter(ax, artists, renderer):
-    """Stack linked notes beside the curve using the size of each rendered label."""
+def _place_facet_sources(ax, labels, renderer):
+    """Place the linked labels as a group, preferring clear space at lower left."""
+    from matplotlib.transforms import Bbox
+
     bounds = ax.get_window_extent(renderer)
     pad = renderer.points_to_pixels(4)
-    boxes = []
-    for artist in artists:
-        artist.set_text(
-            _wrap_measured(artist._pysynth_callout_text, artist, renderer, bounds.width - 3 * pad)
-        )
-        artist.set_position((0, 1))
-        artist.update_positions(renderer)
-        artist.update_bbox_position_size(renderer)
-        boxes.append(artist.get_bbox_patch().get_window_extent(renderer))
-    gap = renderer.points_to_pixels(6)
-    height = sum(box.height for box in boxes) + gap * (len(boxes) - 1)
-    top = bounds.y0 + (bounds.height + height) / 2
-    for artist, box in zip(artists, boxes):
-        artist.set_position(
-            ((bounds.x0 + pad - box.x0) / bounds.width, 1 + (top - box.y1) / bounds.height)
-        )
-        top -= box.height + gap
-    return height + 2 * pad
+    gap = renderer.points_to_pixels(2)
+    line_boxes = [label.get_window_extent(renderer) for label in labels]
+    width = max(box.width for box in line_boxes)
+    height = sum(box.height for box in line_boxes) + (len(labels) - 1) * gap
+    if width + 2 * pad > bounds.width or height + 2 * pad > bounds.height:
+        return False
+    paths = [
+        line.get_transform().transform_path(line.get_path())
+        for line in ax.lines
+        if line.get_visible() and line.get_label() != "Intervention"
+    ]
+    left, right = bounds.x0 + pad, bounds.x1 - pad - width
+    bottom, top = bounds.y0 + pad, bounds.y1 - pad - height
+    for y in (bottom, top, (bottom + top) / 2):
+        for x in (left, right):
+            block = Bbox.from_bounds(x, y, width, height).padded(gap)
+            if any(path.intersects_bbox(block, filled=False) for path in paths):
+                continue
+            cursor = y + height
+            for label, box in zip(labels, line_boxes):
+                cursor -= box.height
+                label.set_position(ax.transAxes.inverted().transform((x, cursor)))
+                cursor -= gap
+            return True
+    return False
 
 
-def _layout_reference_gutters(gutters, renderer):
-    if not gutters:
-        return
-    first = next(iter(gutters))
-    grid = first.get_subplotspec().get_gridspec()
-    ratios = np.array(grid.get_height_ratios(), dtype=float)
-    row = first.get_subplotspec().rowspan.start
-    pixels_per_unit = first.get_window_extent(renderer).height / ratios[row]
-    minima = np.zeros_like(ratios)
-    for gutter, artists in gutters.items():
-        row = gutter.get_subplotspec().rowspan.start
-        minima[row] = _layout_reference_gutter(gutter, artists, renderer) / pixels_per_unit
-
-    # A narrower export or a taller font can add lines. Redistribute the
-    # existing figure height from rows with room to spare, keeping its physical size.
-    remaining = ratios.sum() - minima.sum()
-    if np.any(minima > ratios) and remaining > 0:
-        slack = np.maximum(ratios - minima, 0)
-        grid.set_height_ratios(minima + remaining * slack / slack.sum())
-        first.figure.canvas.draw()
-        for gutter, artists in gutters.items():
-            _layout_reference_gutter(gutter, artists, renderer)
+def _layout_effect_sources(fig):
+    """Keep the grid fixed; carry extra detail into its citation only if needed."""
+    references, grouped = fig._pysynth_effect_sources
+    panels = fig._pysynth_facet_labels
+    in_panel = set(grouped)
+    note_artists = [artist for artist, _ in fig._pysynth_comparison_notes]
+    for _, labels, _ in panels.values():
+        for label in labels:
+            label.set_visible(True)
+    while True:
+        notes = _comparison_source_notes(references, grouped, in_panel=in_panel)
+        fig._pysynth_comparison_notes = [
+            (artist, text) for artist, (text, _) in zip(note_artists, notes)
+        ]
+        titles = {ax: f" [{keys}]" for ax, (fit, _, keys) in panels.items() if fit not in in_panel}
+        _layout_captions(fig, title_suffixes=titles)
+        renderer = fig.canvas.get_renderer()
+        crowded = {
+            fit
+            for ax, (fit, labels, _) in panels.items()
+            if fit in in_panel and not _place_facet_sources(ax, labels, renderer)
+        }
+        if not crowded:
+            return
+        # Each pass moves at least one fit to the caption. A longer caption
+        # may reduce the room available for other panels on a fixed-size export.
+        in_panel -= crowded
+        for fit, labels, _ in panels.values():
+            if fit in crowded:
+                for label in labels:
+                    label.set_visible(False)
 
 
 def _layout_annotations(fig):
@@ -503,12 +559,8 @@ def _layout_annotations(fig):
 
     renderer = fig.canvas.get_renderer()
     occupied = {}
-    gutters = getattr(fig, "_pysynth_reference_gutters", {})
-    _layout_reference_gutters(gutters, renderer)
     for artist in getattr(fig, "_pysynth_direct_annotations", []):
         ax = artist.axes
-        if ax in gutters:
-            continue
         bounds = ax.get_window_extent(renderer)
         artist.set_text(
             _wrap_measured(artist._pysynth_callout_text, artist, renderer, bounds.width * 0.87)
@@ -1116,7 +1168,10 @@ def _finish_figure(fig):
             from matplotlib.backends.backend_agg import FigureCanvasAgg
 
             FigureCanvasAgg(fig)
-        _layout_captions(fig)
+        if hasattr(fig, "_pysynth_effect_sources"):
+            _layout_effect_sources(fig)
+        else:
+            _layout_captions(fig)
         _layout_row_annotations(fig)
         _layout_annotations(fig)
         if getattr(fig, "_pysynth_body_y_label", None) is not None:
@@ -1127,7 +1182,7 @@ def _finish_figure(fig):
         fig.set_canvas(original_canvas)
 
 
-def _layout_captions(fig):
+def _layout_captions(fig, *, title_suffixes=None):
     layout = getattr(fig, "_pysynth_caption_layout", None)
     if layout is None:
         return
@@ -1217,6 +1272,8 @@ def _layout_captions(fig):
     outer.set_height_ratios(ratios)
     for artist, original in getattr(fig, "_pysynth_panel_titles", []):
         width = artist.axes.get_window_extent(renderer).width * 0.98
+        if title_suffixes:
+            original += title_suffixes.get(artist.axes, "")
         artist.set_text(_wrap_measured(original, artist, renderer, width))
     fig.canvas.draw()
     # Shared labels belong beside the data panels, not halfway down a figure
@@ -1417,8 +1474,9 @@ def plot_effects(
     lower left, with a dotted line across the post-treatment period.
     ``references`` pairs each source with its exact fitted specification. Any
     reference fit absent from ``estimates`` gets a separate, labelled panel.
-    A fit with multiple direct comparisons occupies a row with source labels
-    beside its effect path. Numeric guides occur only on the matching method's panel. Use
+    Every fit occupies one equal-sized panel. Multiple sources are labelled
+    together inside the matching panel. A keyed citation carries the details
+    when the panel has insufficient room. Use
     ``reference_style="strip"`` for the earlier table layout without added panels.
     """
     _annotation_style(reference_style)
@@ -1427,43 +1485,26 @@ def plot_effects(
         raise ValueError("ncols must be a positive integer")
     if ylim is not None and (len(ylim) != 2 or not np.isfinite(ylim).all() or ylim[0] >= ylim[1]):
         raise ValueError("ylim must be two finite, increasing values")
-    original_count = len(estimates)
     reference = next(iter(estimates.values()))
     _validate_benchmark(benchmark, reference)
     references = _plot_references(references, reference, benchmark)
     if reference_style == "direct":
         estimates = _reference_fits(estimates, references)
     ncols = min(ncols, len(estimates))
-    # Reserve whole rows for fits with several sources. This keeps insertion
-    # order even when a reference fit falls in the middle of a partial row.
-    panels = []
-    row_heights = []
-    ordinary_slots = set()
-    slot = 0
-    for result in estimates.values():
-        matched = [ref for ref in references if ref.estimate is result]
-        has_gutter = reference_style == "direct" and len(matched) > 1
-        if has_gutter:
-            slot = ((slot + ncols - 1) // ncols) * ncols
-        row, col = divmod(slot, ncols)
-        if col == 0:
-            row_heights.append(1.0)
-        if has_gutter:
-            # Allow the row to grow with the source text at the standard page size.
-            lines = sum(len(_reference_text(ref, 1).splitlines()) + 1 for ref in matched)
-            row_heights[row] = max(1.0, lines / 5)
-        else:
-            ordinary_slots.add(slot)
-        panels.append((row, col, has_gutter))
-        slot += ncols if has_gutter else 1
-    nrows = len(row_heights)
+    nrows = (len(estimates) + ncols - 1) // ncols
+    by_fit = _references_by_fit(references) if reference_style == "direct" else {}
+    grouped = {key: refs for key, refs in by_fit.items() if len(refs) > 1}
+    source_notes = (
+        _comparison_source_notes(references, grouped, in_panel=grouped) if grouped else []
+    )
     with publication_style():
         fig, body = _figure_grid(
             figsize
             or (
                 7.2,
                 1.1
-                + 1.85 * sum(row_heights)
+                + 1.85 * nrows
+                + sum(0.15 * len(fill(text, width=110).splitlines()) for text, _ in source_notes)
                 + (0.75 if benchmark and reference_style == "strip" else 0)
                 + (
                     0.4 + 0.85 * len(references) if references and reference_style == "strip" else 0
@@ -1471,18 +1512,19 @@ def plot_effects(
             ),
             title,
             subtitle,
-            _direct_note(note, references, benchmark) if reference_style == "direct" else note,
+            _direct_note(note, references, benchmark, include_citations=not grouped)
+            if reference_style == "direct"
+            else note,
             benchmark if reference_style == "strip" else None,
             references if reference_style == "strip" else (),
+            source_notes=source_notes,
         )
-        # Put gutters on the same layout grid as the facets. Nesting a second
-        # GridSpec would reserve a second set of tick and title margins.
-        columns = max(2, ncols) if any(has_gutter for _, _, has_gutter in panels) else ncols
-        span = columns // ncols
-        grid = body.subgridspec(nrows, columns, height_ratios=row_heights, hspace=0.22, wspace=0.12)
-        axes = np.full((nrows, ncols), None, dtype=object)
+        grid = body.subgridspec(nrows, ncols, hspace=0.22, wspace=0.12)
+        axes = np.empty((nrows, ncols), dtype=object)
         fig._pysynth_panel_titles = []
-        fig._pysynth_reference_gutters = {}
+        if grouped:
+            fig._pysynth_effect_sources = (references, grouped)
+            fig._pysynth_facet_labels = {}
         x, kind = _time(reference.observed.index)
         common = ylim or _effect_limits(
             np.concatenate(
@@ -1498,23 +1540,10 @@ def plot_effects(
             benchmark,
         )
         for position, (name, result) in enumerate(estimates.items()):
-            row, col, has_gutter = panels[position]
+            row, col = divmod(position, ncols)
             first = axes[0, 0] if position else None
-            gutter = None
-            if has_gutter:
-                split = min(columns - 1, round(columns * 0.6))
-                cell = grid[row, :split]
-            elif position >= original_count and position == len(estimates) - 1 and col == 0:
-                cell = grid[row, :]
-            else:
-                cell = grid[row, col * span : (col + 1) * span]
-            ax = fig.add_subplot(cell, sharex=first, sharey=first if sharey else None)
+            ax = fig.add_subplot(grid[row, col], sharex=first, sharey=first if sharey else None)
             axes[row, col] = ax
-            if has_gutter:
-                # Draw the gutter last so its connector reaches the source guide above the axes face.
-                gutter = fig.add_subplot(grid[row, split:])
-                gutter.set_axis_off()
-                fig._pysynth_reference_gutters[gutter] = []
             _axes_style(ax)
             _time_axis(ax, reference.observed.index, x, kind)
             _intervention(ax, x, reference.n_pre)
@@ -1549,9 +1578,8 @@ def plot_effects(
                     references,
                     result,
                     effects=True,
-                    small=gutter is None,
+                    small=True,
                     color=(colors or {}).get(name, BLUE),
-                    gutter=gutter,
                 )
                 if benchmark is not None and position == 0:
                     _callout(
@@ -1574,7 +1602,7 @@ def plot_effects(
                 pad=9,
             )
             fig._pysynth_panel_titles.append((title_artist, f"{letter}  {display_name}"))
-            bottom = has_gutter or (row + 1) * ncols + col not in ordinary_slots
+            bottom = position + ncols >= len(estimates)
             ax.tick_params(labelbottom=bottom, labelleft=col == 0 or not sharey)
             if bottom:
                 ax.set_xlabel(
@@ -1583,11 +1611,11 @@ def plot_effects(
                     or ("Time (days)" if kind == "duration" else "Time"),
                     fontsize=8,
                 )
-        for (row, col), ax in np.ndenumerate(axes):
-            if ax is None:
-                axes[row, col] = fig.add_subplot(grid[row, col * span : (col + 1) * span])
-                axes[row, col].set_visible(False)
-                axes[row, col].set_in_layout(False)
+        for position in range(len(estimates), axes.size):
+            row, col = divmod(position, ncols)
+            axes[row, col] = fig.add_subplot(grid[row, col])
+            axes[row, col].set_visible(False)
+            axes[row, col].set_in_layout(False)
         shared_label = fig.supylabel(ylabel, fontsize=9)
         fig._pysynth_body_y_label = (shared_label, tuple(axes.flat))
         fig._pysynth_body_y_label_text = ylabel
@@ -1632,10 +1660,7 @@ def plot_comparison(
     if reference_style == "direct":
         estimates = _reference_fits(estimates, references)
         table = _estimates(estimates)
-    by_fit = {}
-    if reference_style == "direct":
-        for ref in references:
-            by_fit.setdefault(id(ref.estimate), []).append(ref)
+    by_fit = _references_by_fit(references) if reference_style == "direct" else {}
     grouped = {key: refs for key, refs in by_fit.items() if len(refs) > 1}
     inline_refs = {key: refs[0] for key, refs in by_fit.items() if len(refs) == 1}
     source_numbers = _source_numbers(references)

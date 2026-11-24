@@ -212,13 +212,16 @@ several comparisons, numbered keys follow the estimator name and the linked
 citation lines below the axes give each source value, reproduction and
 window. Both plots keep their ordinary row spacing. The full-period ATT
 stays distinct from a percentage headline or a check over a shorter window.
-An ochre dotted segment identifies the source mean on its matching effect
-panel, with a callout showing the paired values and evaluation window.
-When a fit has several reference comparisons, its effect panel gets a
-dedicated row. The labels sit beside the trajectory, leaving the full
-effect path and the reference windows visible. The Basque example uses this
-layout to show the paper's percentage headline and the R Synth check in
-GDP units on the same historical fit.
+An ochre dotted segment marks a source mean over its evaluation window when
+the units match the effect axis.
+Each fit occupies one cell in the effect grid. When several sources refer to
+the same fit, the panel shows a short linked line for each source and its
+reproduced value. The labels sit together in a clear corner, with the
+evaluation windows and units in the numbered citations. In the Basque
+notebook, the paper’s percentage headline and the R Synth level comparison
+both fit below the historical curve. If a panel is too small to hold its
+labels clear of the data, keys beside its title lead to the full comparisons
+in the figure caption.
 Outcome paths carry textual callouts, and RMSE never receives an ATT guide.
 
 Matching uses the exact `Estimate` object, not similar labels or numerical

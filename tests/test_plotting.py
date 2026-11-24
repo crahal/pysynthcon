@@ -624,7 +624,7 @@ def basque_reference_fits():
     # using an in-memory series. All panels share the observed GDP trajectory.
     years = pd.Index(range(1960, 1998), name="Year")
     observed = pd.Series(np.linspace(5, 9, len(years)), index=years)
-    gap = np.where(years < 1970, 0.01, -0.6995627075801111)
+    gap = np.where(years < 1970, 0.01, -0.72)
     historical = Estimate(
         "Historical SCM", observed, observed - gap, pd.Series([1.0], index=["donor"]), n_pre=10
     )
@@ -645,6 +645,8 @@ def basque_reference_fits():
         name: replace(historical, counterfactual=observed - gap * (1 + i / 20))
         for i, name in enumerate(names)
     }
+    # The study's ridge fit extends the shared vertical scale to roughly −2.
+    fits["Ridge-augmented SCM"] = replace(historical, counterfactual=observed - 3 * gap)
     return fits, historical, reference_comparisons("basque", historical)
 
 
@@ -667,47 +669,118 @@ def assert_basque_source_links(path, headline, numerical):
         assert label in text and window in text
 
 
-def test_basque_historical_effects_and_citations_stay_separate_in_export(
+def test_basque_historical_effects_share_the_grid_and_keep_sources_inside(
     tmp_path, basque_reference_fits
 ):
-    fits, historical, (headline, numerical) = basque_reference_fits
-    fig, axes = plot_effects(fits, references=[headline, numerical])
-    assert axes.ndim == 2 and axes.shape[1] == 3
-    visible = [ax for ax in axes.flat if ax.get_visible()]
-    names = [*fits, "Reference · Historical SCM"]
-    assert len(visible) == len(names)
-    for ax, name in zip(visible, names):
-        assert name in " ".join(ax.get_title(loc="left").split())
-    historical_ax = visible[-1]
-    curve = next(line for line in historical_ax.lines if line.get_label() == names[-1])
-    np.testing.assert_allclose(curve.get_ydata(), historical.effects)
+    from xml.etree import ElementTree
 
-    notes = {a.get_url(): a for a in fig._pysynth_direct_annotations if a.get_url()}
-    descriptive = notes[headline.source_url]
-    numeric = notes[numerical.source_url]
+    from matplotlib.transforms import Bbox
+
+    fits, historical, (headline, numerical) = basque_reference_fits
+    references = [headline, numerical]
+    fig, axes = plot_effects(fits, references=references)
+    names = [*fits, "Reference · Historical SCM"]
+    assert axes.shape == (4, 3)
+    for ax, name in zip(axes.flat, names):
+        assert ax.get_visible()
+        assert name in " ".join(ax.get_title(loc="left").split())
+
+    historical_ax = axes[-1, -1]
+    curve = next(line for line in historical_ax.lines if line.get_label() == names[-1])
+    guide = next(
+        line for line in historical_ax.lines if line.get_label().startswith("Original R software:")
+    )
+    np.testing.assert_allclose(curve.get_ydata(), historical.effects)
+    np.testing.assert_allclose(guide.get_ydata(), [numerical.reference, numerical.reference])
+    np.testing.assert_array_equal(guide.get_xdata(), numerical.window)
+    assert not any(
+        line.get_label().startswith(headline.source_label + ":") for line in historical_ax.lines
+    )
+
     for width in (7.2, 6.0):
         fig.set_figwidth(width)
         (path,) = save_figure(fig, tmp_path / f"basque-{width}.svg")
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()
-        boxes = [
-            note.get_bbox_patch().get_window_extent(renderer) for note in (descriptive, numeric)
-        ]
+        panels = [ax.get_window_extent(renderer) for ax in axes.flat]
+        grid = np.array([b.bounds for b in panels]).reshape(4, 3, 4)
+        np.testing.assert_allclose(grid[:, :, 2], grid[0, 0, 2], atol=0.5)
+        np.testing.assert_allclose(grid[:, :, 3], grid[0, 0, 3], atol=0.5)
+        np.testing.assert_allclose(np.diff(grid[:, :, 0], axis=0), 0, atol=0.5)
+        np.testing.assert_allclose(np.diff(grid[:, :, 1], axis=1), 0, atol=0.5)
+        # No separate source axis occupies part of the panel grid.
+        region = Bbox.union(panels)
+        assert all(
+            not region.overlaps(ax.get_window_extent(renderer))
+            for ax in fig.axes
+            if ax not in axes.flat and ax.get_visible()
+        )
+
+        labels = {artist.get_url(): artist for artist in historical_ax.texts if artist.get_url()}
+        boxes = []
+        for ref in references:
+            artist = labels[ref.source_url]
+            assert artist.get_visible() and getattr(artist, "arrow_patch", None) is None
+            label = artist.get_text().replace("−", "-")
+            assert f"{ref.reference:.{ref.reference_precision}f}" in label
+            assert f"{ref.reproduced:.{ref.precision}f}" in label
+            patch = artist.get_bbox_patch()
+            box = (patch if patch is not None else artist).get_window_extent(renderer)
+            panel = panels[-1]
+            assert panel.contains(box.x0, box.y0) and panel.contains(box.x1, box.y1)
+            for line in (curve, guide):
+                drawn = line.get_transform().transform_path(line.get_path())
+                assert not drawn.intersects_bbox(box, filled=False)
+            boxes.append(box)
         assert not boxes[0].overlaps(boxes[1])
-        for note, box in zip((descriptive, numeric), boxes):
-            for bounds in (fig.bbox, note.axes.get_window_extent(renderer)):
-                assert bounds.contains(box.x0, box.y0) and bounds.contains(box.x1, box.y1)
-            assert all(not box.overlaps(ax.get_tightbbox(renderer)) for ax in visible)
 
-        assert descriptive.arrow_patch is None
-        assert numerical.window[0] <= numeric.xy[0] <= numerical.window[1]
-        assert numeric.xy[1] == numerical.reference
-        guide_point = historical_ax.transData.transform(numeric.xy)
-        leader = numeric.arrow_patch
-        leader_tip = leader.get_path().transformed(leader.get_transform()).vertices[-1]
-        assert np.linalg.norm(guide_point - leader_tip) <= renderer.points_to_pixels(4)
+        # Full source windows remain available in the exported graphic; the
+        # compact in-panel values link to the matching original sources.
+        svg = ElementTree.parse(path)
+        links = svg.findall(".//{http://www.w3.org/2000/svg}a")
+        figure_text = " ".join(
+            " ".join(text.itertext()) for text in svg.iter("{http://www.w3.org/2000/svg}text")
+        )
+        assert "of observed GDP" in figure_text
+        assert reference_comparison_table([numerical]).iloc[0]["difference_label"] in figure_text
+        for ref in references:
+            linked_text = " ".join(
+                " ".join(link.itertext())
+                for link in links
+                if link.get("{http://www.w3.org/1999/xlink}href") == ref.source_url
+            ).replace("−", "-")
+            assert f"{ref.reference:.{ref.reference_precision}f}" in linked_text
+            assert f"{ref.reproduced:.{ref.precision}f}" in linked_text
+            assert f"{ref.window[0]}–{ref.window[1]}" in figure_text
 
-        assert_basque_source_links(path, headline, numerical)
+
+def test_crowded_historical_facet_uses_linked_source_keys_then_recovers_on_resize(
+    tmp_path, basque_reference_fits
+):
+    fits, _, refs = basque_reference_fits
+    fig, axes = plot_effects(fits, references=refs)
+    ax = axes[-1, -1]
+    for width, in_panel in ((4, False), (7.2, True)):
+        fig.set_figwidth(width)
+        save_figure(fig, tmp_path / f"crowded-{width}.svg")
+        fig.canvas.draw()
+        labels = {text.get_url(): text for text in ax.texts if text.get_url()}
+        assert all(labels[ref.source_url].get_visible() == in_panel for ref in refs)
+        keyed_title = "[1,2]" in "".join(ax.get_title(loc="left").split())
+        assert keyed_title != in_panel
+        if not in_panel:
+            notes = {
+                text.get_url(): text
+                for other in fig.axes
+                if other is not ax
+                for text in other.texts
+                if text.get_url() and text.get_visible()
+            }
+            for ref in refs:
+                text = notes[ref.source_url].get_text().replace("−", "-")
+                assert f"{ref.reference:.{ref.reference_precision}f}" in text
+                assert f"{ref.reproduced:.{ref.precision}f}" in text
+                assert f"{ref.window[0]}–{ref.window[1]}" in text
 
 
 def test_basque_dot_plot_preserves_row_spacing_and_linked_comparisons(
@@ -755,7 +828,7 @@ def test_basque_dot_plot_preserves_row_spacing_and_linked_comparisons(
         assert_basque_source_links(path, headline, numerical)
 
 
-def test_dense_historical_annotations_use_empty_facet_space_and_keep_both_source_windows():
+def test_incomplete_reference_row_keeps_one_facet_and_both_source_windows():
     fit = example(pd.Index([2000, 2001, 2004, 2010]))
     historical = replace(fit, counterfactual=fit.observed - [0, 0, -4, -8])
     refs = [
@@ -771,20 +844,26 @@ def test_dense_historical_annotations_use_empty_facet_space_and_keep_both_source
         ),
     ]
     fits = {f"Model {i}": fit for i in range(12)}
-    fig, axes = plot_effects(fits, references=refs)
-    historical_panel = axes[-1, 0].get_position()
-    source_gutter = fig._pysynth_direct_annotations[-1].axes.get_position()
-    assert historical_panel.width > axes[0, 0].get_position().width
-    assert source_gutter.x1 - historical_panel.x0 > 2.5 * axes[0, 0].get_position().width
-    assert not axes[-1, 1].get_visible() and not axes[-1, 2].get_visible()
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    # Leave the outer padding as well as the text inside its source gutter.
-    for artist in fig._pysynth_direct_annotations[-2:]:
-        box = artist.get_bbox_patch().get_window_extent(renderer)
-        bounds = artist.axes.get_window_extent(renderer)
-        assert bounds.x0 <= box.x0 < box.x1 <= bounds.x1
-        assert bounds.y0 <= box.y0 < box.y1 <= bounds.y1
+    for sources in (refs[:1], refs):
+        fig, axes = plot_effects(fits, references=sources)
+        assert axes.shape == (5, 3)
+        assert not axes[-1, 1].get_visible() and not axes[-1, 2].get_visible()
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        bounds = axes[-1, 0].get_window_extent(renderer)
+        assert bounds.width == pytest.approx(axes[0, 0].get_window_extent(renderer).width, abs=0.5)
+        labels = [
+            artist
+            for artist in axes[-1, 0].texts
+            if artist.get_url() == refs[0].source_url and artist.get_visible()
+        ]
+        if labels:
+            assert len(labels) == len(sources)
+            for artist in labels:
+                box = artist.get_window_extent(renderer)
+                assert bounds.contains(box.x0, box.y0) and bounds.contains(box.x1, box.y1)
+        else:
+            assert "[1]" in axes[-1, 0].get_title(loc="left")
     # Distinct checks in the same source may share a numbered citation and URL.
     fig, _ = plot_comparison(fits, references=refs)
     text = " ".join(
