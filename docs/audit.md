@@ -160,7 +160,7 @@ exact R sampling plan.
 
 ## Validation
 
-The complete provisioned suite passes **461 tests**, including online academic
+At the time of the estimator audit the provisioned suite passed **461 tests**, including online academic
 references and local original-R integration. Six warnings record expected
 SDID iteration caps in original-budget tests, and one comes from Matplotlib's
 use of a deprecated pyparsing API. Separately, 154 panel, results, placebo,
