@@ -3,8 +3,10 @@
 Reference-method changes must preserve the full fitting specification: no
 reduced restart counts, shortened lag histories, fixed predictor metrics, or
 substituted tuning rules in replication examples. Run the independent original
-R checks for affected methods. Install their pinned dependencies with
-`python scripts/install_r_references.py --library .r-library`; R, a Fortran
+R checks for affected methods using the separately supplied local bundle
+described in [the reference setup guide](https://github.com/crahal/pysynthcon/blob/main/docs/reference_backends.md).
+Install its pinned dependencies with
+`python .local/reference/scripts/install_r_references.py --library .r-library`; R, a Fortran
 compiler and GLPK development headers are required. Keep numerical recovery
 diagnostics and distinguish algorithm parity from replication of a study's data
 and covariate design. New figure benchmarks need a source, matched window,
@@ -73,7 +75,16 @@ visually review the exported figures at their intended physical dimensions.
 After changes, re-execute every affected notebook and inspect its PDF, SVG
 and PNG exports under `empirical_examples/figures/`. PDF fonts must be
 embedded, captions must fit the canvas, and common scales must retain
-outlying methods. `--output-dir` also redirects linked figure files.
+outlying methods. Commit the executed notebooks with embedded figures;
+generated figure exports, CSVs and diagnostics remain local.
+`--output-dir` also redirects local figure exports.
+
+Keep R source and reference setup/validation utilities under ignored
+`.local/reference/`. Do not embed R source in tracked Python files. The small
+numerical JSON fixtures are regression-test inputs and remain tracked.
+GitHub CI runs the Python checks and builds without uploading auxiliary
+artifacts; original-R integration and complete notebook execution run locally
+with the reference bundle provisioned.
 
 ## Pull requests and releases
 

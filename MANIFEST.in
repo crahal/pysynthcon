@@ -3,7 +3,10 @@ include requirements-replication.txt
 recursive-include docs *.md *.rst *.py
 prune docs/_build
 recursive-include empirical_examples *.ipynb
-recursive-include empirical_examples/figures *.md *.pdf *.svg *.png *.csv
-recursive-include scripts *.py *.R
+prune empirical_examples/figures
+prune empirical_examples/baselines
+recursive-include scripts *.py
 recursive-include tests *.py *.json
+prune .local
+global-exclude *.R *.r
 global-exclude __pycache__ *.py[cod]

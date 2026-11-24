@@ -1,11 +1,11 @@
 """Reproduce the paper's California placebo standard error and RNG stream."""
 
-import shutil
 from dataclasses import replace
 
 import pytest
 
 from pysynth import Panel, SyntheticDID
+from pysynth._r import reference_directory, require_rscript
 from pysynth.datasets import DATASETS, load_dataset
 from pysynth.replication import california_paper_inference
 
@@ -18,8 +18,11 @@ def test_california_paper_inference_rejects_other_designs_before_running_r(panel
 @pytest.mark.network
 @pytest.mark.r_reference
 def test_california_paper_standard_error_and_exact_ordering(tmp_path):
-    if shutil.which("Rscript") is None:
-        pytest.skip("The authors' random-number stream requires base R")
+    try:
+        reference_directory("california_rng.R")
+        require_rscript()
+    except ImportError as error:
+        pytest.skip(str(error))
     panel = DATASETS["california"].panel(load_dataset("california", cache_dir=tmp_path))
     estimate = SyntheticDID().fit(panel)
     result = california_paper_inference(panel, estimate)

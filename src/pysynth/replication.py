@@ -4,12 +4,12 @@ These helpers encode the predictor choices in the cited upstream examples.
 They are kept separate from the common outcome-only comparisons.
 """
 
-import shutil
 import subprocess
 from io import StringIO
 
 import numpy as np
 
+from ._r import reference_directory, require_rscript
 from .backends import PySyncon, _require
 from .datasets import DATASETS
 from .plotting import LiteratureBenchmark, ReferenceComparison
@@ -65,7 +65,8 @@ def california_paper_inference(panel, estimate):
     The authors' paper-results vignette uses 200 draws with R seed 12345.
     An isolated base-R process generates their Mersenne-Twister sampling plan;
     Python then performs all original SDID placebo refits. This requires Rscript
-    but no R packages. Donors must have the original alphabetical ordering,
+    and the separately provisioned local ``california_rng.R`` resource, but no
+    R packages. Donors must have the original alphabetical ordering,
     California must be last, and annual observations must span 1970–2000 with
     treatment beginning in 1989. ``estimate`` must be an SDID fit of this panel.
 
@@ -92,19 +93,10 @@ def california_paper_inference(panel, estimate):
         or metadata.get("omega_intercept") is not True
     ):
         raise ValueError("estimate must use the original default SDID fitting settings")
-    executable = shutil.which("Rscript")
-    if executable is None:
-        raise ImportError(
-            "California paper inference requires Rscript to reproduce the authors' "
-            "R random-number stream. Install base R; no additional R packages are needed."
-        )
-    import os
-    from pathlib import Path
-    script = str(Path(os.environ.get(
-        'PYSYNTH_REFERENCE_DIR', '.local/reference/runtime'
-    )) / 'california_rng.R')
+    script = reference_directory("california_rng.R") / "california_rng.R"
+    executable = require_rscript()
     completed = subprocess.run(
-        [executable, "--vanilla", script],
+        [executable, "--vanilla", str(script)],
         capture_output=True,
         text=True,
         check=False,

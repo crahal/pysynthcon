@@ -54,10 +54,12 @@ contains the zero-based unit indices. Passing those indices back through
 R do **not** define identical resampling plans. The independent R fixtures use
 identical explicit plans, including bootstrap draws with different treated counts,
 and verify every ATT and all three variances to an absolute tolerance of `1e-10`.
-Re-run that check with:
+The numerical fixtures are checked by the normal Python test suite. With the
+separately supplied [local reference bundle](reference_backends.md), regenerate
+the independent comparison with:
 
 ```bash
-python scripts/validate_sdid_inference.py
+python .local/reference/scripts/validate_sdid_inference.py
 ```
 
 This requires `Rscript` and the R `jsonlite` package and downloads the pinned
@@ -92,8 +94,9 @@ print(uncertainty.standard_error)  # 8.36799308138054, rounded to 8.4 in Table 1
 The helper validates the original 38-donor alphabetical order, California as the
 single treated state, and the 1970–2000 window with 1989 onset. It starts an
 isolated `Rscript --vanilla` process using R's Mersenne-Twister generator,
-Inversion normal generation and Rejection sampling, with `set.seed(12345)`.
-Base R suffices; no R packages are required for this helper. All 200 placebo
+Inversion normal generation and Rejection sampling, with R seed 12345.
+The local bundle must supply its RNG helper; base R suffices without extra R
+packages. All 200 placebo
 fits then run in Python with the original SDID settings. Source, RNG and seed
 are recorded in `uncertainty.metadata["paper_replication"]`.
 

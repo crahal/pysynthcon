@@ -87,12 +87,15 @@ def build(name, title, description, reference):
         markdown(
             f"# {title}\n\n{description}\n\n{reference}\n\n"
             "Run from a checkout installed using `requirements-replication.txt` and "
-            "`pip install -e .`. Install the original R dependencies with "
-            "`python scripts/install_r_references.py --library .r-library` after "
+            "`pip install -e .`. Full execution also needs the separately supplied "
+            "local reference bundle, which is excluded from this repository. "
+            "Once it is provisioned, install the original R dependencies with "
+            "`python .local/reference/scripts/install_r_references.py --library .r-library` after "
             "following [the R setup guide](../docs/reference_backends.md). "
             "The notebook downloads immutable public data with "
             "**requests**, checks the reference specification, and exports three "
-            "publication figures as PDF, SVG and 300 dpi PNG. "
+            "publication figures locally as PDF, SVG and 300 dpi PNG. "
+            "The figures are embedded below; generated exports stay outside version control. "
             "See [the replication guide](../docs/replication.md) and "
             "[the figure guide](../docs/plotting.md)."
         ),
@@ -174,10 +177,10 @@ def build(name, title, description, reference):
 
             def export_figure(fig, kind):
                 paths = save_figure(fig, figure_dir / f'{{name}}-{{kind}}')
-                links = ' · '.join(
-                    f'[{{p.suffix[1:].upper()}}](figures/{{name}}/{{p.name}})' for p in paths
+                paths_text = ' · '.join(
+                    f'`{{os.path.relpath(p, example_dir)}}`' for p in paths
                 )
-                display(Markdown('**Download figure:** ' + links))
+                display(Markdown('**Local figure exports** (relative to the notebook directory): ' + paths_text))
                 display(Markdown(f'**Literature source:** [{{benchmark.citation}}]({{benchmark.source_url}})'))
                 return paths
 
@@ -351,7 +354,7 @@ def build(name, title, description, reference):
             plt.show()
         """),
         markdown("""
-            ## Original SDID placebo inference and changes from the previous version
+            ## Original SDID placebo inference
 
             The original synthdid placebo variance estimator refits donor and time
             weights in each of 200 resamples. The seed is fixed. These standard errors
@@ -361,10 +364,6 @@ def build(name, title, description, reference):
             reproducing the paper's standard error 8.4 at its printed precision.
             The other examples use NumPy seed 0 for reproducible new applications.
 
-            The second table compares this full fit with the archived software
-            outputs at commit `32d4f97`. Those earlier results used shortcuts; they
-            are **not published academic benchmarks**. The difference is current
-            ATT minus the previous software ATT on the same common sample.
         """),
         code("""
             if paper_uncertainty is not None:
@@ -385,15 +384,6 @@ def build(name, title, description, reference):
             inference.to_csv(figure_dir / f'{name}-sdid-inference.csv')
             np.savetxt(figure_dir / f'{name}-sdid-resamples.csv', uncertainty.resamples, delimiter=',', fmt='%d')
             np.savetxt(figure_dir / f'{name}-sdid-draws.csv', uncertainty.draws, delimiter=',')
-            previous_path = example_dir / 'baselines' / '32d4f97' / f'{name}-estimates.csv'
-            previous = pd.read_csv(previous_path, index_col=0)
-            changes = pd.DataFrame({
-                'Previous software ATT': previous['att'],
-                'Full method ATT': comparison['att'],
-            })
-            changes['Change'] = changes['Full method ATT'] - changes['Previous software ATT']
-            display(changes.round(5))
-            changes.to_csv(figure_dir / f'{name}-changes.csv', float_format='%.12g')
         """),
         markdown("""
             ## Inspect the donor coefficients
@@ -418,9 +408,10 @@ def build(name, title, description, reference):
             comparison specifications and their stated tuning choices.
 
             Each figure is exported at **7.2 inches wide** in three formats: PDF with
-            embedded fonts, SVG with editable text, and 300 dpi PNG. The links beside
-            each figure download the full export. The estimator summary is also saved
-            as CSV. Use vector formats for manuscripts and adjust figure size, labels
+            embedded fonts, SVG with editable text, and 300 dpi PNG. The local paths
+            are printed beside each embedded figure. Generated figures, CSV summaries,
+            and diagnostic files stay outside version control; rerunning the notebook
+            recreates them. Use vector formats for manuscripts and adjust figure size, labels
             and captions through the plotting API before exporting to a journal's
             requirements. Nothing depends on system fonts or an external TeX install.
 

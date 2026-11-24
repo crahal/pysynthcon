@@ -35,6 +35,13 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Changed
 
+- Generated figure exports, diagnostic tables and prior-output archives are
+  local-only; executed notebooks retain their embedded figures and results.
+- R source and reference setup/validation utilities are local-only dependencies,
+  selected through `PYSYNTH_REFERENCE_DIR`. They are excluded from the repository
+  and distributions. Full SCUL/ISC fits and California's exact paper sampling
+  plan require the separately supplied bundle. GitHub CI runs Python checks;
+  original-R integration remains available locally.
 - SCUL defaults to the original R `lambda.median` procedure with fold-specific
   glmnet paths. ISC and 2SISC default to MSCMT and 50 donor resamples.
   R dependencies are now required for these defaults; the previous native

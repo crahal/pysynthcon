@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -10,6 +9,7 @@ import numpy as np
 import pytest
 
 from pysynth import SCUL, IndividualSC, Panel, TwoStageIndividualSC
+from pysynth._r import reference_directory, reference_library, require_rscript
 
 FIXTURES = Path(__file__).with_name("fixtures")
 pytestmark = pytest.mark.r_reference
@@ -17,17 +17,32 @@ pytestmark = pytest.mark.r_reference
 
 @pytest.fixture(scope="module", autouse=True)
 def original_r_packages():
-    if shutil.which("Rscript") is None:
-        pytest.skip("Rscript is not installed")
-    library = os.environ.get("PYSYNTH_R_LIBRARY", str(Path(".r-library").resolve()))
+    try:
+        directory = reference_directory(
+            "scul.R",
+            "common.R",
+            "isc.R",
+            "scul/SCUL.R",
+            "scul/getOptcv.scul.R",
+            "scul/mysd.R",
+            "../tests/check_packages.R",
+        )
+        executable = require_rscript()
+    except ImportError as error:
+        pytest.skip(str(error))
+    library = reference_library()
     check = subprocess.run(
-        ["Rscript", "--vanilla", str(Path(os.environ.get("PYSYNTH_REFERENCE_DIR", ".local/reference/runtime")).parent / "tests/check_packages.R")],
-        env=dict(os.environ, R_LIBS=library),
+        [
+            executable,
+            "--vanilla",
+            str(directory.parent / "tests/check_packages.R"),
+        ],
+        env=dict(os.environ, R_LIBS=library) if library else None,
         capture_output=True,
         check=False,
     )
     if check.returncode:
-        pytest.skip("Install pinned original R packages with scripts/install_r_references.py")
+        pytest.skip("The local reference resources require pinned glmnet 4.0-2 and MSCMT 1.4.0")
 
 
 @pytest.mark.parametrize("selection", ["median", "min", "1se"])

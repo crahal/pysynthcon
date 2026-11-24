@@ -33,14 +33,16 @@ For the tested academic replication environment, use Python 3.11 or 3.12:
 ```bash
 python -m pip install -r requirements-replication.txt
 python -m pip install -e '.[docs,dev]'
-# Ubuntu/Debian: install R, gfortran and libglpk-dev first.
-python scripts/install_r_references.py --library .r-library
 ```
 
-SCUL and ISC now require R and the pinned reference packages; they no longer
-silently use simplified Python substitutes. Follow the [R installation
-guide](docs/reference_backends.md) before running the complete example. SCM, DID and SDID
-remain available without R. The `backends` extra pins pysyncon replication fixes.
+SCUL and ISC require a **separately supplied local reference bundle**, R, and
+the pinned reference packages. R source, setup utilities, and generated exports
+are excluded from this repository and distributions. A fresh clone alone cannot
+run these two reference backends or re-execute all empirical notebooks. Follow
+the [local reference setup guide](docs/reference_backends.md) to provision them.
+SCM, DID and SDID estimation and inference remain available in Python; the
+California paper's exact R-generated sampling plan also needs the local bundle.
+The `backends` extra pins pysyncon replication fixes.
 
 ## A complete example
 
@@ -165,16 +167,15 @@ fig, axes = plot_effects(fits, ylabel="Effect on cigarette sales (packs per capi
 save_figure(fig, "figures/california-effects")
 ```
 
-![California estimator comparison](empirical_examples/figures/california/california-comparison.png)
-
-Every notebook exports three figures with **source / reproduction / difference**
-annotations using matching specifications and periods. CSVs record the source
-comparisons, full estimates, runtimes, and changes from the previous software
-version. Each notebook also runs the original SDID placebo variance procedure
-with 200 resamples.
-Browse the [downloadable figures](empirical_examples/figures/README.md) or
-the [plotting guide](docs/plotting.md). Dots are point estimates, without
-confidence intervals; shaded time regions identify the post-period.
+See the embedded figures in the [California notebook](empirical_examples/california.ipynb).
+Every notebook displays three figures with **source / reproduction / difference**
+annotations using matching specifications and periods. Rerunning a notebook
+creates local PDF, SVG and PNG exports, CSVs of source comparisons and estimates,
+and fitting diagnostics. Generated files stay outside version control.
+Each notebook also runs the original SDID placebo variance procedure with 200
+resamples. The [plotting guide](docs/plotting.md) explains local regeneration.
+Dots are point estimates, without confidence intervals; shaded time regions
+identify the post-period.
 
 ## Documentation and development
 

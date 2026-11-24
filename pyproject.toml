@@ -27,8 +27,8 @@ Issues = "https://github.com/crahal/pysynthcon/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-pysynth = ["_reference/*.R", "_reference/*.md", "_reference/scul/*.R"]
+[tool.setuptools.exclude-package-data]
+"*" = ["*.R", "*.r", "_reference/*", "_reference/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

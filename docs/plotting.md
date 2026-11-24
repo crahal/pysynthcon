@@ -276,13 +276,15 @@ annotations on the parent figure instead.
 
 Each academic notebook saves a reference path, an ATT/RMSE comparison, an
 effect-panel figure, and the comparison and source-check values as CSV under
-`empirical_examples/figures/<example>/`. The notebook contains download links
-to its PDF, SVG and PNG exports. The historical reference figure is explicitly
+`empirical_examples/figures/<example>/`. These generated files stay local and
+are excluded from version control and source distributions. The committed
+notebooks embed all three figures and print the local export paths; rerun them
+to create PDF, SVG and PNG files. The historical reference figure is explicitly
 separate from the common-comparison specifications.
 
 ```bash
 python scripts/execute_notebooks.py
-# Write executed notebooks and their linked figures to another directory:
+# Write executed notebooks and local figure exports to another directory:
 python scripts/execute_notebooks.py --output-dir /tmp/pysynth-rendered
 ```
 

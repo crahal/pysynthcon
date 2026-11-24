@@ -1,16 +1,31 @@
-# Installing and reproducing the original R methods
+# Local reference dependencies
 
 SCUL and ISC default to the original R implementations. Estimation is offline:
 it never installs packages, downloads executable code, or falls back to an
 approximation. An unavailable or incorrectly versioned dependency produces an
 actionable error.
 
-From a repository checkout, install R, C/Fortran development tools and GLPK
+The R source, setup/validation utilities, and dependency lock are maintained
+**outside version control and package distributions**. Obtain the separately
+supplied reference bundle before using these backends; cloning this repository
+does not provide it. Keep the bundle in the ignored `.local/reference/` folder:
+
+- `runtime/`: the R process adapters, shared helpers, and SCUL functions.
+- `scripts/`: the local dependency installer, lock, and independent validators.
+- `tests/`: the independent fixture generator.
+
+For a bundle kept elsewhere, set `PYSYNTH_REFERENCE_DIR` to its absolute
+`runtime/` path. This is separate from `PYSYNTH_R_LIBRARY`, which locates
+installed R packages. The runtime directory is discovered from the checkout
+root or its subdirectories. Missing resources cause an explicit error; the
+library neither downloads them nor silently substitutes a different estimator.
+
+Once the local bundle is in place, install R, C/Fortran development tools and GLPK
 headers. On Debian or Ubuntu:
 
 ```sh
 sudo apt-get install r-base r-base-dev gfortran libglpk-dev
-python scripts/install_r_references.py --library .r-library
+python .local/reference/scripts/install_r_references.py --library .r-library
 ```
 
 On macOS, install R and its matching Fortran compiler, and GLPK (for example,
@@ -19,7 +34,7 @@ visible to the compiler. The installer does not change system packages; the
 commands above require the usual administrator rights for your system.
 
 The Python installer checks SHA-256 hashes against
-`scripts/r-reference-lock.json` before installing the numerical packages. It
+`.local/reference/scripts/r-reference-lock.json` before installing the numerical packages. It
 pins glmnet **4.0-2**, MSCMT **1.4.0**, and their numerical dependencies. ggplot2
 is needed by MSCMT's package namespace; if absent, its normal CRAN installation
 also installs its nonnumerical dependencies. Record the printed `sessionInfo()`
@@ -30,6 +45,7 @@ From another working directory, select its absolute path:
 
 ```sh
 export PYSYNTH_R_LIBRARY="/absolute/path/to/PySynth/.r-library"
+export PYSYNTH_REFERENCE_DIR="/absolute/path/to/PySynth/.local/reference/runtime"
 ```
 
 Alternatively pass `r_library="/absolute/path/to/library"` to `SCUL`,
@@ -60,11 +76,11 @@ scaling; it is not MSCMT's unweighted dependent-variable loss.
 
 ## What is pinned and what is changed
 
-- SCUL's three original functions are packaged at commit
+- The local bundle's SCUL functions follow commit
   `121b588cf8e4eebcea68518b57a7c754040153bb`. glmnet 4.0-2 is the version in the
   authors' published tutorial. Its original solver tolerances, automatic
   fold-specific paths, median rule and exact refit are retained.
-- Two validation matrix slices have `drop=FALSE` added to preserve dimensions
+- Two validation matrix slices explicitly preserve dimensions
   for a one-period horizon. This fixes an R shape error; it does not change the
   objective, path, or selection rule.
 - glmnet's C progress-bar helper uses a current R language-object constructor
@@ -96,6 +112,10 @@ These integration checks compare the Python interface against independently
 generated direct R calls, including all three SCUL penalty-selection rules,
 ISC's covariate groups, 50 donor-resampling draws, and the continuous sampling
 stream across two cases with different donor pools. The independent generator
-is `tests/fixtures/reference_backends.R`; fixture generation never calls the
+is `.local/reference/tests/reference_backends.R`; fixture generation never calls the
 Python adapter. The native sklearn and fixed-metric alternatives remain
 explicit research options, not substitutes for these reference tests.
+Tests requiring the local bundle are marked `r_reference` and report an
+explicit skip when it is absent. GitHub CI runs the independent numerical
+fixtures in Python; the original-R integration checks run in a provisioned
+local environment.

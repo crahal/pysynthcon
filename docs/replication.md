@@ -3,11 +3,14 @@
 The four notebooks in `empirical_examples/` use only settings from major
 methodological papers. Each downloads immutable public bytes with requests,
 verifies SHA256, checks a reference specification, and runs all twelve
-interfaces on a shared outcome panel. Executed outputs are committed.
+interfaces on a shared outcome panel. Executed tables and embedded figures
+are retained in the notebooks.
 
 Each notebook also exports three publication figures (reference paths,
 ATT/pretreatment-fit summary, and shared-scale effect panels) as PDF, SVG and
-300 dpi PNG, with a CSV of comparison values. The [plotting guide](plotting.md)
+300 dpi PNG, with a CSV of comparison values. These exports and diagnostic
+files are generated locally and excluded from version control; rerun the
+notebooks to recreate them. The [plotting guide](plotting.md)
 documents units, timing, scale and export conventions. Figures show point
 estimates without confidence intervals; the post-period shading denotes time.
 
@@ -55,7 +58,7 @@ after seeing a run.
 California's SDID standard error is also replicated with the authors' exact
 200-draw plan. `california_paper_inference(panel, estimate)` uses an isolated
 base-R process to generate Mersenne-Twister/Inversion/Rejection permutations
-with `set.seed(12345)`, then performs all SDID refits in Python. The alphabetical
+with R seed 12345, then performs all SDID refits in Python. The alphabetical
 donor order and historical time window are checked. The standard error is
 **8.36799308138054**, matching Table 1's rounded **8.4**, with an independent-R
 absolute tolerance of `1e-9`. The seed is specified in the authors'
@@ -101,7 +104,7 @@ checked against independently generated original-R fits with glmnet 4.0-2,
 including all three selection rules. ISC is checked against MSCMT 1.4.0,
 including covariate groups and the donor-sampling stream across individuals.
 These checks live in `tests/test_r_references.py`; their generator is
-`tests/fixtures/reference_backends.R`.
+`.local/reference/tests/reference_backends.R`.
 
 Separate legacy tests check the explicitly selected native-Python SCUL
 approximation against glmnet's solver on a common lambda grid. Lasso prediction
@@ -117,11 +120,15 @@ upstream fitted object's predictions.
 
 ## Re-run
 
+Complete notebook execution requires the separately supplied
+[local reference bundle](reference_backends.md). Its R source and setup tools
+are not distributed in this repository. Provision it before the commands below.
+
 ```bash
 python -m pip install -r requirements-replication.txt
 python -m pip install -e '.[docs,dev]'
 # First install R, C/Fortran development tools and GLPK headers (see guide below).
-python scripts/install_r_references.py --library .r-library
+python .local/reference/scripts/install_r_references.py --library .r-library
 python -m pytest
 python -m pytest -m network
 python scripts/execute_notebooks.py --output-dir /tmp/pysynth-notebooks
@@ -132,8 +139,9 @@ pandas 2.3.3 and scikit-learn 1.7.2; all principal replication requirements
 are pinned. BLAS and platform differences can still matter. Run with
 `OPENBLAS_NUM_THREADS=1` for stable, economical small-panel computation.
 
-R is required for the default SCUL and ISC fits and for their integration
-tests. The native Python tests remain independent of R and network access.
+R and the local bundle are required for the default SCUL and ISC fits and for
+their integration tests. The native Python tests remain independent of R and
+network access. Missing local resources produce explicit integration-test skips.
 See the [R installation guide](reference_backends.md).
 
 To independently re-run the legacy native-Python SCUL and SDID point-estimate
@@ -141,9 +149,9 @@ references without rewriting fixtures, install the R packages `glmnet` and
 `jsonlite`, then run:
 
 ```bash
-python scripts/validate_r.py
+python .local/reference/scripts/validate_r.py
 # For a custom R library location:
-python scripts/validate_r.py --r-library /path/to/R-library
+python .local/reference/scripts/validate_r.py --r-library /path/to/R-library
 ```
 
 This legacy SCUL fixture tests `backend="python", selection="min"`; it does
@@ -169,7 +177,7 @@ eligibility rules and microdata are still required to reproduce those
 studies' empirical estimates; no invented targets are assigned to them.
 
 
-## Full fitting and comparison with earlier software
+## Full fitting and local diagnostics
 
 The empirical notebooks now estimate pysyncon SCM predictor importance, retain
 all pre-outcome lags, and run all ten SyntheticControlMethods starts. SCUL uses
@@ -184,8 +192,8 @@ horizon choices are California 5/12, Germany 14/14, Kansas 16/16, and Basque
 limitation is visible rather than hidden by an automatic shortcut. These are
 new applications of the original algorithm, not original-paper calibrations.
 
-`empirical_examples/baselines/32d4f97` archives the preceding software CSVs
-unchanged. The notebooks export current-minus-previous ATT tables separately
-from academic source comparisons. Runtime and solver diagnostics accompany
-the results. Floating-point libraries and R package versions are recorded;
+The notebooks retain the academic source comparisons in their tables and
+figure annotations. Runtime, solver diagnostics, and SDID resampling records
+are exported locally alongside the figures. No archived software-output files
+are required to run the examples. Floating-point libraries and R package versions are recorded;
 algorithmic parity does not imply bitwise equality across arbitrary machines.
