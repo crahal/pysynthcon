@@ -322,7 +322,10 @@ scores on a common color scale, directly labelling the lowest pooled RMSE
 (including exact ties). `plot_donor_sensitivity(sensitivity)` labels the baseline and largest
 absolute ATT change beside the relevant estimates, including the donor
 exclusion responsible. It also shows every exclusion estimate and the
-scenario range. Both accept `title`, `units`, `labels`, `figsize` and
+scenario range. Its optional `unit_labels` maps donor IDs to names used
+in single-donor annotations. For example, the Kansas notebook uses the
+source data's state names for FIPS codes. The fitted panels and exported
+scenario tables retain their original IDs. Both accept `title`, `units`, `labels`, `figsize` and
 `note`; both return a Figure and two editable Axes. Neither invents confidence
 intervals or attributes these new diagnostics to a paper's published results.
 See the [evaluation guide](evaluation.md) for complete examples.

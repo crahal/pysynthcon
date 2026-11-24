@@ -147,6 +147,7 @@ def plot_donor_sensitivity(
     title="Sensitivity to donor exclusions",
     units="outcome units",
     labels=None,
+    unit_labels=None,
     figsize=None,
     note=None,
 ):
@@ -155,7 +156,9 @@ def plot_donor_sensitivity(
     Horizontal spans describe the fitted scenario range, not uncertainty.
     Each scenario is a complete refit, including repeated donor selection.
     Baseline values and the exclusion responsible for each largest change
-    are annotated beside their points. Rows preserve estimator order.
+    are annotated beside their points. Optional ``unit_labels`` maps original
+    donor IDs to display names for single-donor omissions. Rows preserve
+    estimator order.
     Requires a :class:`DonorSensitivityResult`.
     Returns Figure and two editable Matplotlib Axes; no models are refitted.
     """
@@ -184,7 +187,8 @@ def plot_donor_sensitivity(
         all_values = [0.0]
         for row, name in enumerate(names):
             baseline = float(summary.loc[name, "baseline_att"])
-            values = result.table.loc[result.table.model == name, "att"].to_numpy()
+            model_rows = result.table.loc[result.table.model == name]
+            values = model_rows["att"].to_numpy()
             if not len(values) or not np.isfinite(np.r_[baseline, values]).all():
                 raise ValueError("scenario and baseline estimates must be finite")
             all_values.extend([baseline, *values])
@@ -216,6 +220,10 @@ def plot_donor_sensitivity(
             )
             scenario = str(summary.loc[name, "worst_scenario"])
             scenario_label = f"Omit {scenario[5:]}" if scenario.startswith("omit:") else scenario
+            if unit_labels is not None and scenario.startswith("omit:"):
+                excluded = model_rows.loc[model_rows.scenario == scenario, "excluded_units"].iloc[0]
+                if len(excluded) == 1 and excluded[0] in unit_labels:
+                    scenario_label = f"Omit {unit_labels[excluded[0]]}"
             right.annotate(
                 fill(scenario_label, 23),
                 (change, row),

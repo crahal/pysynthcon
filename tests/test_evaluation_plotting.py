@@ -83,6 +83,23 @@ def test_donor_plot_preserves_every_scenario_and_baseline(comparison_panel):
     plt.close(fig)
 
 
+def test_donor_display_names_preserve_native_ids_and_named_scenarios(comparison_panel):
+    panel = Panel(comparison_panel.y, 4, 11, units=[2.0, 20.0, 38.0, 46.0, 42.0])
+    names = {2: "Alaska", 20: "Kansas", 38: "North Dakota", 46: "South Dakota"}
+    models = {"DID": DifferenceInDifferences}
+    result = donor_sensitivity(panel, models)
+    scenario = result.summary.at["DID", "worst_scenario"]
+    unit = result.table.loc[result.table.scenario == scenario, "excluded_units"].iloc[0][0]
+    fig, axes = plot_donor_sensitivity(result, unit_labels=names)
+    assert any(t.get_text() == f"Omit {names[unit]}" for t in axes[1].texts)
+    assert scenario == f"omit:{unit}" and isinstance(unit, float)
+    plt.close(fig)
+    named = donor_sensitivity(panel, models, exclusions={"Northern states": [38, 46]})
+    fig, axes = plot_donor_sensitivity(named, unit_labels=names)
+    assert any(t.get_text() == "Northern states" for t in axes[1].texts)
+    plt.close(fig)
+
+
 def test_validation_plot_labels_all_exact_ties(comparison_panel):
     result = backtest(
         comparison_panel,
