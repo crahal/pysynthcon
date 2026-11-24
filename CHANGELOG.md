@@ -18,6 +18,8 @@ versioning; the API may evolve during the 0.x research releases.
 
 ### Documentation and figures
 
+- Place the fitted mean ATT in the lower-left corner of effect panels and
+  remove its arrow. The dotted line shows the mean over the treated periods.
 - Give effect panels with multiple source comparisons a dedicated row and
   place their labels beside the curve. The Basque historical SCM panel now
   shows the entire trajectory alongside the paper and R Synth comparisons.

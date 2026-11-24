@@ -68,6 +68,10 @@ interpolate missing periods, or silently fit unfitted estimators.
 
 - Effect paths use **observed minus counterfactual**, including any fitted
   intercept or SDID level correction already present in the result.
+- In the default effect panels, the lower-left `Mean ATT` label gives the
+  average post-treatment gap. A dotted line at that value spans the treated
+  periods. Panels paired with a published comparison show its source and
+  evaluation window.
 - The dashed vertical line is exactly the first affected observation,
   `result.observed.index[result.n_pre]`. The pale background marks the
   post-period. It is not a confidence band.

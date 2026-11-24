@@ -571,16 +571,32 @@ def test_unplotted_reference_panel_includes_historical_effects_in_shared_limits(
     assert not any(line.get_label().startswith("Published:") for line in visible[0].lines)
 
 
-def test_mean_callout_points_to_mean_not_final_effect_and_path_ticks_remain_observed():
+def test_mean_att_labels_stay_in_the_lower_left_without_leaders(tmp_path):
     fit = example(pd.Index([2000, 2001, 2004, 2010]))
-    fig, axes = plot_effects({"SCM": fit}, colors={"SCM": "red"})
-    callout = fig._pysynth_direct_annotations[0]
-    assert callout.xy[1] == fit.att
-    assert callout.xy[1] != fit.effects.iloc[-1]
-    assert callout.get_color() == "red"
-    guide = next(line for line in axes[0, 0].lines if line.get_label() == "Fitted mean ATT")
-    np.testing.assert_array_equal(guide.get_xdata(), [2004, 2010])
-    assert guide.get_color() == "red"
+    other = replace(fit, counterfactual=fit.observed - [0, 1, -2, -4])
+    fig, axes = plot_effects({"A": fit, "B": other}, colors={"A": "red", "B": "navy"})
+    for width in (7.2, 6.0):
+        fig.set_figwidth(width)
+        save_figure(fig, tmp_path / f"mean-att-{width}.svg")
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        for ax, result, color, label in zip(
+            axes.flat, (fit, other), ("red", "navy"), ("Mean ATT 2.00", "Mean ATT −3.00")
+        ):
+            (text,) = [t for t in ax.texts if t.get_text().startswith("Mean ATT")]
+            assert text.get_text() == label and text.get_color() == color
+            assert getattr(text, "arrow_patch", None) is None
+            box = text.get_window_extent(renderer).transformed(ax.transAxes.inverted())
+            assert 0 <= box.x0 < 0.12 and 0 <= box.y0 < 0.15
+            assert box.x1 <= 1 and box.y1 <= 1
+            guide = next(line for line in ax.lines if line.get_label() == "Fitted mean ATT")
+            np.testing.assert_array_equal(guide.get_xdata(), [2004, 2010])
+            np.testing.assert_allclose(guide.get_ydata(), [result.att, result.att])
+            assert guide.get_color() == color and guide.is_dashed()
+
+
+def test_path_labels_and_ticks_identify_observed_times_and_treatment():
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
     ax = plot_paths(fit, color="red", intervention_label="Treatment")
     assert ax.get_legend() is None
     assert all(2000 <= tick <= 2010 for tick in ax.get_xticks())

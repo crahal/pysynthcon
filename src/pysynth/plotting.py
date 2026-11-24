@@ -407,14 +407,20 @@ def _annotate_references(
                 label="Fitted mean ATT",
                 zorder=2.5,
             )
-            _callout(
-                ax,
+            label = ax.annotate(
                 f"Mean ATT {_number(estimate.att)}",
-                ((x[estimate.n_pre] + x[-1]) / 2, estimate.att),
-                width=27,
+                xy=(0, 0),
+                xycoords="axes fraction",
+                xytext=(4, 3),
+                textcoords="offset points",
+                ha="left",
+                va="bottom",
                 fontsize=7.5,
                 color=color,
+                bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.92, "pad": 0.8},
+                zorder=5,
             )
+            label.set_in_layout(False)
         return
     # Each callout uses one actual source window; unlike a full-period ATT,
     # percentage and subset-window results never acquire a level-scale guide.
@@ -1407,7 +1413,8 @@ def plot_effects(
     ``colors`` customize display without renaming estimates. Unused panels
     are hidden. The returned array always has shape (nrows, ncols).
     A numeric ``benchmark`` adds a dotted source mean over the matching
-    post-period. Direct labels identify the matching source and reproduced mean.
+    post-period. Panels without a paired source show the mean ATT in the
+    lower left, with a dotted line across the post-treatment period.
     ``references`` pairs each source with its exact fitted specification. Any
     reference fit absent from ``estimates`` gets a separate, labelled panel.
     A fit with multiple direct comparisons occupies a row with source labels
