@@ -155,14 +155,15 @@ activemq-data/
 .venv
 .venv*/
 .data-cache/
-.r-library/
+.r-library
 # Generated empirical outputs are kept locally; figures are embedded in notebooks.
 /empirical_examples/figures/
 /empirical_examples/baselines/
 /executed-notebooks/
 /figures/
 # Local reference code and research support material.
-/.local/
+/.local
+/.venv-replication
 /src/pysynth/_reference/
 /scripts/install_r_references.py
 /scripts/validate_r.py

@@ -15,6 +15,8 @@ import nbformat
 from jupyter_client import KernelManager
 from nbclient import NotebookClient
 
+EXAMPLES = ("basque", "california", "germany", "kansas")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -23,7 +25,7 @@ def main():
     parser.add_argument(
         "--examples",
         nargs="+",
-        choices=["basque", "california", "germany", "kansas"],
+        choices=EXAMPLES,
         help="Execute selected examples; by default execute all four",
     )
     args = parser.parse_args()
@@ -33,9 +35,10 @@ def main():
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     if args.output_dir is not None:
         os.environ["PYSYNTH_FIGURE_DIR"] = str(args.output_dir.resolve() / "figures")
-    for path in sorted((root / "empirical_examples").glob("*.ipynb")):
-        if args.examples is not None and path.stem not in args.examples:
+    for example in EXAMPLES:
+        if args.examples is not None and example not in args.examples:
             continue
+        path = root / "empirical_examples" / f"{example}.ipynb"
         print(f"Executing {path.name}", flush=True)
         nb = nbformat.read(path, as_version=4)
         manager = KernelManager(kernel_name="python3")
