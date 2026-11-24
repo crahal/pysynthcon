@@ -25,6 +25,7 @@ its authors' software and from applying that method to a new dataset.
 | The notebook runner retained completed kernels. | Supplying an external kernel manager disables nbclient's default cleanup, leaving earlier notebooks' processes and channels alive during a long run. | Explicitly request cleanup; real-kernel tests verify shutdown and connection-resource removal after both success and failure. |
 | Documentation called 2SISC an unpublished extension and its default combined screening with the separate MSCMT replication workflow. | Petrillo et al. (2025) already describe the approach; their two-stage Python code fits temporal-mean predictors without resampling donors. | Credit the paper and make that fitting specification the default. Direct KDTree/pysyncon comparison tests verify multivariate fits. Preserve the MSCMT/resampling variant explicitly. |
 | SDID inference warned about capped draws without a direct way to extend an existing fit's inherited budget. | Setting a larger budget on a new estimator object did not affect inference supplied with the old estimate; the resampled fits could remain capped. | Add an explicit inference budget override, actionable warnings and a strict check. Re-run identical plans with the same algorithm, tolerance and penalties; independently verify extended fits against original R. |
+| Repeated reference tables occupied much of each figure above the plotted data. | Source comparisons were visually separated from the matching estimates, and unrelated source specifications appeared above single-method paths. | Use direct curve labels and matched source callouts. Add separate historical reference rows/panels when needed, preserve incompatible units/windows as text, and retain full audit tables in expandable notebook sections. |
 
 The independent Basque run uses R Synth 1.1-10 and the authors' documented
 paper Table 3 preparation. Its 1975–1997 mean effect is **−0.6995627076** thousand 1986 US
@@ -120,7 +121,7 @@ exact R sampling plan.
 
 ## Validation
 
-The complete provisioned suite passes **402 tests**, including online academic
+The complete provisioned suite passes **413 tests**, including online academic
 references and local original-R integration. Independent SDID reruns match all
 inference draws within `2.76e-14`; SCUL screening matches 1,840 direct caret
 column/window decisions. All 16 canonical pysyncon adapter fits pass checked
@@ -163,6 +164,12 @@ fold errors, pooled scores, ATT changes and scenario extrema agree with the
 exported tables. Tests cover target masking, labels, fresh instances, full
 refits, immutable diagnostics and contextual failures. Original SDID
 iteration-cap warnings remain visible in validation as well as point fits.
+
+All twenty figures now use direct annotations. Visual review checks source
+associations, evaluation windows, units and label placement; regression tests
+cover historical reference panels, dense multiline comparisons, callout
+containment and annotation targets. Full specifications and numerical audit
+tables remain in expandable notebook sections after their figures.
 
 Strict Sphinx, Ruff and distribution builds pass; archive
 inspection finds no R code, private helpers or generated empirical exports.

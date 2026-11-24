@@ -37,7 +37,8 @@ FIGURE_DETAILS = {
         "periods": "1970–1988 pretreatment · 1989–2000 post-treatment · 38 donors",
         "onset": "1989",
         "reference": "SDID counterfactual",
-        "reference_note": "Reference: Arkhangelsky et al. (2021), no-covariate SDID. Dashed vertical line: first affected year, 1989. Shading marks the post-treatment period.",
+        "reference_note": "No-covariate SDID. Shading marks the post-treatment period, not uncertainty.",
+        "comparison_note": "The paper's SC uses the SDID package's SC specification; the outcome-only SCM fits are separate applications.",
     },
     "basque": {
         "case": "The Basque Country",
@@ -47,7 +48,8 @@ FIGURE_DETAILS = {
         "periods": "1960–1969 pretreatment · 1970–1997 post-treatment · 16 donors",
         "onset": "1970",
         "reference": "Historical SCM counterfactual",
-        "reference_note": "Historical predictor specification. The numerical validation uses the 1975–1997 ATT; comparison figures use 1970–1997. The paper's percentage headline is shown above. Shading starts in 1970.",
+        "reference_note": "Historical predictor SCM. Numerical check: 1975–1997; common comparison: 1970–1997. Shading starts in 1970.",
+        "comparison_note": "Paper headline: about 10% GDP loss, 1980–1997. Original-R numerical check: mean GDP gap, 1975–1997.",
     },
     "germany": {
         "case": "German reunification",
@@ -57,7 +59,8 @@ FIGURE_DETAILS = {
         "periods": "1960–1989 pretreatment · 1990–2003 post-treatment · 16 donors",
         "onset": "1990",
         "reference": "Historical SCM counterfactual",
-        "reference_note": "Reference: Abadie, Diamond & Hainmueller (2015). The historical specification includes 1990 in predictor training. Comparison estimators use only periods before 1990.",
+        "reference_note": "Historical predictor SCM includes 1990 in training; common-comparison fits use only years before 1990.",
+        "comparison_note": "Historical SCM includes 1990 in predictor training; common-comparison fits use only years before 1990.",
     },
     "kansas": {
         "case": "The Kansas income-tax cuts",
@@ -67,7 +70,8 @@ FIGURE_DETAILS = {
         "periods": "1990 Q1–2012 Q1 pretreatment · 2012 Q2–2016 Q1 post-treatment · 49 donors",
         "onset": "2012 Q2",
         "reference": "Ridge ASCM counterfactual",
-        "reference_note": "Reference: Ben-Michael, Feller & Rothstein (2021), no-covariate Ridge ASCM vignette. Shading starts at 2012.25, as in the source. Effects are log differences, not percentage changes.",
+        "reference_note": "No-covariate Ridge ASCM. Effects are log differences. Shading starts at the authors' 2012.25 onset.",
+        "comparison_note": "Reference: the authors' Ridge ASCM vignette. Effects are log differences, not percentage changes.",
     },
 }
 
@@ -82,22 +86,33 @@ def markdown(source):
     return nbf.v4.new_markdown_cell(dedent(source).strip())
 
 
+def details(summary, source):
+    return f"<details>\n<summary>{summary}</summary>\n\n{dedent(source).strip()}\n\n</details>"
+
+
 def build(name, title, description, reference):
     cells = [
         markdown(
-            f"# {title}\n\n{description}\n\n{reference}\n\n"
-            "Run from a checkout installed using `requirements-replication.txt` and "
-            "`pip install -e .`. Full execution also needs the separately supplied "
-            "local reference bundle, which is excluded from this repository. "
-            "Once it is provisioned, install the original R dependencies with "
-            "`python .local/reference/scripts/install_r_references.py --library .r-library` after "
-            "following [the R setup guide](../docs/reference_backends.md). "
-            "The notebook downloads immutable public data with "
-            "**requests**, checks the reference specification, and exports five "
-            "publication figures locally as PDF, SVG and 300 dpi PNG. "
-            "The figures are embedded below; generated exports stay outside version control. "
-            "See [the replication guide](../docs/replication.md) and "
-            "[the figure guide](../docs/plotting.md)."
+            f"# {title}\n\n{description}\n\n"
+            "Historical results and matched reproductions are annotated directly on the figures. "
+            "Expand the notes and audit tables for full specifications and numerical checks.\n\n"
+            + details("Historical specification and source", reference)
+            + "\n\n"
+            + details(
+                "Setup, data and figure exports",
+                "Run from a checkout installed using `requirements-replication.txt` and "
+                "`pip install -e .`. Full execution also needs the separately supplied "
+                "local reference bundle, which is excluded from this repository. "
+                "Once it is provisioned, install the original R dependencies with "
+                "`python .local/reference/scripts/install_r_references.py --library .r-library` after "
+                "following [the R setup guide](../docs/reference_backends.md). "
+                "The notebook downloads immutable public data with "
+                "**requests**, checks the reference specification, and exports five "
+                "publication figures locally as PDF, SVG and 300 dpi PNG. "
+                "The figures are embedded below; generated exports stay outside version control. "
+                "See [the replication guide](../docs/replication.md) and "
+                "[the figure guide](../docs/plotting.md).",
+            )
         ),
         code("""
             %matplotlib inline
@@ -107,6 +122,7 @@ def build(name, title, description, reference):
             import time
             from dataclasses import replace
             from functools import partial
+            from html import escape
             from io import BytesIO
             from pathlib import Path
             from importlib.metadata import version
@@ -115,7 +131,7 @@ def build(name, title, description, reference):
             import pandas as pd
             import requests
             import matplotlib.pyplot as plt
-            from IPython.display import Markdown, display
+            from IPython.display import HTML, Markdown, display
 
             from pysynth import (
                 SyntheticControl, SCUL, IndividualSC, TwoStageIndividualSC,
@@ -157,17 +173,9 @@ def build(name, title, description, reference):
         markdown("""
             ## Reference specification and numerical check
 
-            This uses the historical specification above. Its numerical assertion is
-            separate from the new-method comparison. The path figure identifies the
-            reference estimator explicitly. See `pysynth.replication.replicate` for
-            predictor windows and optimization settings.
-
-            The warm-toned annotation gives the source-reported result at its stated
-            precision, with a source link and specification context. It is separate
-            from the numerical replication check. See the
-            [benchmark provenance](../docs/replication.md#literature-annotations)
-            for the paper/author-example distinction, compatible units, and the
-            German paper's 2025 erratum.
+            The figure pairs each source result with its matched reproduction.
+            Historical specifications and their numerical checks are separate from
+            the common-sample applications below.
         """),
         code(f"""
             figure_details = {FIGURE_DETAILS[name]!r}
@@ -180,11 +188,17 @@ def build(name, title, description, reference):
             def export_figure(fig, kind):
                 paths = save_figure(fig, figure_dir / f'{{name}}-{{kind}}')
                 paths_text = ' · '.join(
-                    f'`{{os.path.relpath(p, example_dir)}}`' for p in paths
+                    f'[{{p.suffix[1:].upper()}}](<{{os.path.relpath(p, example_dir)}}>)' for p in paths
                 )
-                display(Markdown('**Local figure exports** (relative to the notebook directory): ' + paths_text))
-                display(Markdown(f'**Literature source:** [{{benchmark.citation}}]({{benchmark.source_url}})'))
+                display(Markdown('Download: ' + paths_text + f' · [Literature source]({{benchmark.source_url}})'))
                 return paths
+
+            def display_audit(title, *tables):
+                tables_html = ''.join(
+                    (table.to_frame() if isinstance(table, pd.Series) else table).to_html(escape=True)
+                    for table in tables
+                )
+                display(HTML(f'<details><summary>{{escape(title)}}</summary>{{tables_html}}</details>'))
 
             reference = replicate(name, data)
             report = check_replication(name, reference)
@@ -211,9 +225,7 @@ def build(name, title, description, reference):
 
             references = matched_references(reference, additional=additional)
             reference_table = reference_comparison_table(references)
-            display(reference_table)
             reference_table.to_csv(figure_dir / f'{{name}}-references.csv', index=False)
-            display(pd.Series(report, name='Replication check'))
             ax = plot_paths(
                 reference,
                 title=figure_details['case'],
@@ -225,12 +237,18 @@ def build(name, title, description, reference):
                 references=references,
                 note=figure_details['reference_note'],
             )
-            reference_files = export_figure(ax.figure, 'reference')
             plt.show()
+            reference_files = export_figure(ax.figure, 'reference')
+            display_audit('Reference values and numerical replication checks',
+                          reference_table, pd.Series(report, name='Replication check'))
         """),
-        markdown("""
-            ## Fit all applicable methods on a common sample
-
+        markdown(
+            "## Fit all applicable methods on a common sample\n\n"
+            "All methods share the outcome panel, eligible donors and treatment date. "
+            "These are new applications, distinct from the historical replications.\n\n"
+            + details(
+                "Estimator specifications and full computation settings",
+                """
             Every comparison uses the same outcome panel, eligible donors and treatment
             date. Classical pysyncon SCM estimates predictor importance by nested
             optimization. SyntheticControlMethods uses **all pretreatment outcome
@@ -263,7 +281,9 @@ def build(name, title, description, reference):
             SCM uses them for donor denoising. Neither fits to treated post-outcomes.
             Each model runs in full; failures stop execution. Elapsed fitting times
             and optimizer diagnostics are exported alongside the estimates.
-        """),
+        """,
+            )
+        ),
         code("""
             scul_windows = {'california': (5, 12), 'basque': (3, 5),
                             'germany': (14, 14), 'kansas': (16, 16)}
@@ -287,7 +307,7 @@ def build(name, title, description, reference):
                 started = time.perf_counter()
                 results[label] = model.fit(panel)
                 elapsed[label] = time.perf_counter() - started
-                print(f'{label}: {elapsed[label]:.2f} seconds')
+            print(f'Fitted {len(results)} estimators on the common panel.')
             comparison = compare(results)
             comparison['elapsed_seconds'] = pd.Series(elapsed)
             if name == 'california':
@@ -309,22 +329,13 @@ def build(name, title, description, reference):
                 'SyntheticControlMethods SCM': 'SCM · SCMethods',
                 'Differenced SCM': 'Differenced SCM',
             }
-            comparison.round(4)
         """),
         markdown("""
             ## Average effects and pretreatment fit
 
-            The left panel reports the average post-treatment gap (ATT); the right
-            reports pretreatment root mean squared error in the same outcome units.
-            Methods retain the same order in every figure. They are not ranked by
-            estimated effect or fit. Each dot is a point estimate: **there are no
-            estimated confidence intervals in these figures**. Better pretreatment
-            fit alone does not establish causal credibility.
-
-            The reference strip pairs each source result with its matched reproduction
-            and signed difference, using the same statistic and evaluation window.
-            Approximate paper headlines and numerical upstream examples are labelled
-            separately. They are not targets for every estimator.
+            Source comparisons use matched statistics and evaluation windows;
+            they are not targets for every estimator. Dots are point estimates without
+            confidence intervals.
         """),
         code("""
             fig, axes = plot_comparison(
@@ -333,38 +344,38 @@ def build(name, title, description, reference):
                 subtitle=figure_details['periods'],
                 units=figure_details['units'],
                 references=references,
+                note=figure_details['comparison_note'] + ' Points are estimates without confidence intervals; RMSE is descriptive.',
             )
-            comparison_files = export_figure(fig, 'comparison')
             comparison.to_csv(figure_dir / f'{name}-estimates.csv', float_format='%.12g')
             plt.show()
+            comparison_files = export_figure(fig, 'comparison')
+            display_audit('Estimator estimates, pretreatment fit and elapsed times', comparison.round(4))
         """),
         markdown("""
             ## Effect paths on a common scale
 
-            Every panel shows **observed minus counterfactual**. All twelve panels
-            share the same horizontal and vertical scales; no extreme estimate is
-            clipped. The zero line denotes no estimated effect. The dashed vertical
-            line and shaded region identify the common treatment onset and post-period.
-            Shading does not represent uncertainty. Calendar spacing is preserved,
-            including quarterly observations. Panel labels replace repeated legends.
-            The source/reproduction strip uses matched specifications and windows.
-            Any numeric reference guide applies only to its matched estimator.
+            Comparison and reference specifications show **observed minus counterfactual** on shared scales.
+            Numeric reference guides apply only to their matched estimators.
         """),
         code("""
             fig, axes = plot_effects(
                 results, labels=display_labels,
                 title=figure_details['case'],
-                subtitle='Estimated effect paths · shared scales across all twelve methods',
+                subtitle='Estimated effect paths · comparison and reference specifications',
                 ylabel=figure_details['effect'], xlabel='Year',
                 references=references,
-                note=figure_details['periods'] + '. Shading marks the post-period; no uncertainty intervals are shown.',
+                note=figure_details['comparison_note'] + ' Shading marks the post-period, not uncertainty.',
             )
-            effects_files = export_figure(fig, 'effects')
             plt.show()
+            effects_files = export_figure(fig, 'effects')
         """),
-        markdown("""
-            ## Pretreatment validation and specification selection
-
+        markdown(
+            "## Pretreatment validation and specification selection\n\n"
+            "Common pretreatment holdouts compare prediction performance. "
+            "Selection does not establish causal validity; the selected score is optimistic.\n\n"
+            + details(
+                "Validation design, selection and limitations",
+                """
             These are **new analyses of the academic data**, separate from the paper
             replications above. We compare methods and three prespecified 2SISC donor
             counts on common withheld pretreatment blocks. Every actual post-treatment
@@ -382,7 +393,9 @@ def build(name, title, description, reference):
             original panel. The selected score is optimistic after model selection;
             no post-selection confidence interval or causal guarantee is implied.
             Candidate choices and folds must be set before examining treatment effects.
-        """),
+        """,
+            )
+        ),
         code("""
             candidates = {
                 'Outcome SCM': SyntheticControl,
@@ -400,11 +413,6 @@ def build(name, title, description, reference):
                 horizon=validation_horizon,
             )
             validation = selection.validation
-            display(validation.summary)
-            display(validation.scores[['model', 'fold', 'training_end', 'validation_start',
-                                       'validation_end', 'validation_rmse']])
-            print(f'Selected by pretreatment validation: {selection.selected_name}')
-            print(f'Full-panel selected ATT: {selection.estimate.att:.6g}')
             validation.summary.to_csv(figure_dir / f'{name}-validation-summary.csv')
             validation.scores.to_csv(figure_dir / f'{name}-validation-folds.csv', index=False)
             validation.predictions.to_csv(figure_dir / f'{name}-validation-predictions.csv', index=False)
@@ -412,12 +420,24 @@ def build(name, title, description, reference):
                 validation, title=figure_details['case'] + ' · pretreatment validation',
                 units=figure_details['units'],
             )
-            validation_files = export_figure(fig, 'validation')
             plt.show()
+            validation_files = export_figure(fig, 'validation')
+            display_audit(
+                'Validation scores, fold definitions and selected fit',
+                validation.summary,
+                validation.scores[['model', 'fold', 'training_end', 'validation_start',
+                                   'validation_end', 'validation_rmse']],
+                pd.Series({'Selected estimator': selection.selected_name,
+                           'Full-panel selected ATT': selection.estimate.att}, name='Selection'),
+            )
         """),
-        markdown("""
-            ## Dependence on donor eligibility
-
+        markdown(
+            "## Dependence on donor eligibility\n\n"
+            "Each point removes one eligible donor and fully refits the estimator. "
+            "Scenario ranges are not confidence intervals.\n\n"
+            + details(
+                "Donor exclusions, complete refitting and interpretation",
+                """
             Remove **every eligible donor in turn** and completely refit three distinct
             estimator families: outcome SCM, the authors' two-stage ISC specification,
             and SDID. 2SISC repeats nearest-neighbor screening after each exclusion.
@@ -430,22 +450,24 @@ def build(name, title, description, reference):
             result nor a sign reversal establishes whether a donor is causally valid.
             These diagnostics should inform the study design, not selection of a
             donor pool that produces a preferred effect.
-        """),
+        """,
+            )
+        ),
         code("""
             sensitivity = donor_sensitivity(panel, {
                 'Outcome SCM': SyntheticControl,
                 '2SISC k=10': partial(TwoStageIndividualSC, n_neighbors=10),
                 'SDID': SyntheticDID,
             })
-            display(sensitivity.summary)
             sensitivity.table.to_csv(figure_dir / f'{name}-donor-sensitivity.csv', index=False)
             sensitivity.summary.to_csv(figure_dir / f'{name}-donor-sensitivity-summary.csv')
             fig, axes = plot_donor_sensitivity(
                 sensitivity, title=figure_details['case'] + ' · donor sensitivity',
                 units=figure_details['units'],
             )
-            sensitivity_files = export_figure(fig, 'donor-sensitivity')
             plt.show()
+            sensitivity_files = export_figure(fig, 'donor-sensitivity')
+            display_audit('Donor sensitivity summary', sensitivity.summary)
         """),
         markdown("""
             ## SDID placebo inference and numerical convergence

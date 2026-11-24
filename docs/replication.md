@@ -17,9 +17,11 @@ estimates without confidence intervals; the post-period shading denotes time.
 
 ## Literature annotations
 
-The twelve reference/comparison figures carry a source annotation, independent of the numerical
-validation targets below. Values retain the precision and interpretation of
-their sources:
+The twelve reference/comparison figures annotate source values and their
+matched reproductions directly beside curves, effect panels or ATT rows.
+Signed differences use the same statistic and evaluation window; these
+descriptive comparisons are distinct from the numerical validation targets
+below. Values retain the precision and interpretation of their sources:
 
 | Setting | Figure annotation | Source and comparability |
 |---|---|---|
@@ -33,10 +35,22 @@ German GDP is in **PPP-adjusted current US dollars**, following the authors'
 The original paper's constant-2002-dollar label was incorrect. The correction
 changes interpretation of levels, not the stored data or fitted estimates.
 
-The ochre dotted guides show the named source's average effect. They appear
-only on compatible ATT/effect axes, with matching post-treatment windows;
-they are neither period-specific paths nor uncertainty intervals. An effect
-from one specification is not an expected answer for every estimator.
+An ochre diamond marks a compatible source mean on its matched ATT row;
+dotted segments mark compatible source means on effect panels over their
+stated evaluation windows. Percentage comparisons on dollar axes and subset
+comparisons on full-period ATT rows remain text only. The guides are neither
+period-specific paths nor uncertainty intervals. An effect from one
+specification is not an expected answer for every estimator.
+
+Historical fits absent from the comparison mapping receive separate
+`Reference · …` rows or panels. References are matched and deduplicated by
+estimate-object identity, so similarly named methods do not inherit their
+benchmarks. The plotted estimates and supplied mapping remain unchanged.
+Short numbered citations identify the original sources; callouts link to them
+in vector exports. Full reference
+contexts and numerical checks remain in expandable notebook audit tables
+and exported CSVs. The earlier source-strip layout remains available through
+`reference_style="strip"`; see the [plotting guide](plotting.md).
 
 ## What each check establishes
 
