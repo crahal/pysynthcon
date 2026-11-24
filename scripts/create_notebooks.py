@@ -18,7 +18,7 @@ EXAMPLES = {
     ),
     "germany": (
         "German reunification",
-        "GDP per capita, 1960–2003; first comparison post-period 1990. Outcome: GDP per capita in the source's US-dollar units.",
+        "GDP per capita, 1960–2003; first comparison post-period 1990. Outcome: GDP per capita in PPP-adjusted current US dollars, following the authors' 2025 erratum.",
         "Abadie, Diamond and Hainmueller (2015), [AJPS](https://doi.org/10.1111/ajps.12116). The historical two-stage predictor-weight specification is checked against the pysyncon reference ATT −1555.13468, with its predeclared 2.5% numerical tolerance. That reference includes 1990 in predictor means and the training validation window. We retain this historical convention explicitly; all common-comparison models below fit only years **strictly before 1990**.",
     ),
     "kansas": (
@@ -47,13 +47,13 @@ FIGURE_DETAILS = {
         "periods": "1960–1969 pretreatment · 1970–1997 post-treatment · 17 donors",
         "onset": "1970",
         "reference": "Historical SCM counterfactual",
-        "reference_note": "Reference: Abadie & Gardeazabal (2003), historical predictor specification. The benchmark ATT uses 1975–1997; comparison figures use 1970–1997. Shading starts in 1970.",
+        "reference_note": "Historical predictor specification. The numerical validation uses the 1975–1997 ATT; comparison figures use 1970–1997. The paper's percentage headline is shown above. Shading starts in 1970.",
     },
     "germany": {
         "case": "German reunification",
-        "outcome": "GDP per capita (US dollars, source units)",
-        "effect": "Effect on GDP per capita (US dollars, source units)",
-        "units": "US$ per capita",
+        "outcome": "GDP per capita (PPP current US$)",
+        "effect": "Effect on GDP per capita (PPP current US$)",
+        "units": "PPP current US$ per capita",
         "periods": "1960–1989 pretreatment · 1990–2003 post-treatment · 16 donors",
         "onset": "1990",
         "reference": "Historical SCM counterfactual",
@@ -96,6 +96,7 @@ def build(name, title, description, reference):
         code("""
             %matplotlib inline
             import hashlib
+            from dataclasses import replace
             import os
             from io import BytesIO
             from pathlib import Path
@@ -113,7 +114,7 @@ def build(name, title, description, reference):
                 plot_paths, plot_effects, plot_comparison, save_figure,
             )
             from pysynth.datasets import DATASETS
-            from pysynth.replication import replicate, check_replication
+            from pysynth.replication import LITERATURE_BENCHMARKS, replicate, check_replication
 
             pd.Series({p: version(p) for p in [
                 'pysynth-control', 'numpy', 'scipy', 'pandas', 'matplotlib',
@@ -146,9 +147,17 @@ def build(name, title, description, reference):
             separate from the new-method comparison. The path figure identifies the
             reference estimator explicitly. See `pysynth.replication.replicate` for
             predictor windows and optimization settings.
+
+            The warm-toned annotation gives the source-reported result at its stated
+            precision, with a source link and specification context. It is separate
+            from the numerical replication check. See the
+            [benchmark provenance](../docs/replication.md#literature-annotations)
+            for the paper/author-example distinction, compatible units, and the
+            German paper's 2025 erratum.
         """),
         code(f"""
             figure_details = {FIGURE_DETAILS[name]!r}
+            benchmark = LITERATURE_BENCHMARKS[name]
             # Works when the kernel starts in either the repository or notebook folder.
             example_dir = Path.cwd() if Path.cwd().name == 'empirical_examples' else Path.cwd() / 'empirical_examples'
             figure_dir = Path(os.environ.get('PYSYNTH_FIGURE_DIR', example_dir / 'figures')) / name
@@ -159,6 +168,7 @@ def build(name, title, description, reference):
                     f'[{{p.suffix[1:].upper()}}](figures/{{name}}/{{p.name}})' for p in paths
                 )
                 display(Markdown('**Download figure:** ' + links))
+                display(Markdown(f'**Literature source:** [{{benchmark.citation}}]({{benchmark.source_url}})'))
                 return paths
 
             reference = replicate(name, data)
@@ -172,6 +182,7 @@ def build(name, title, description, reference):
                 observed_label='Observed',
                 counterfactual_label=figure_details['reference'],
                 intervention_label=figure_details['onset'],
+                benchmark=benchmark,
                 note=figure_details['reference_note'],
             )
             reference_files = export_figure(ax.figure, 'reference')
@@ -238,6 +249,11 @@ def build(name, title, description, reference):
             estimated effect or fit. Each dot is a point estimate: **there are no
             estimated confidence intervals in these figures**. Better pretreatment
             fit alone does not establish causal credibility.
+
+            Where the source reports a mean effect in the same units and averaging
+            window, the ochre dotted line marks that literature benchmark on the ATT
+            axis only. It is a result from the named specification, not a target for
+            every estimator or an uncertainty interval.
         """),
         code("""
             fig, axes = plot_comparison(
@@ -245,6 +261,9 @@ def build(name, title, description, reference):
                 title=figure_details['case'],
                 subtitle=figure_details['periods'],
                 units=figure_details['units'],
+                benchmark=replace(benchmark, context=benchmark.context + (
+                    ' Dotted line: source mean ATT.' if benchmark.value is not None else ''
+                )),
             )
             comparison_files = export_figure(fig, 'comparison')
             comparison.to_csv(figure_dir / f'{name}-estimates.csv', float_format='%.12g')
@@ -259,6 +278,8 @@ def build(name, title, description, reference):
             line and shaded region identify the common treatment onset and post-period.
             Shading does not represent uncertainty. Calendar spacing is preserved,
             including quarterly observations. Panel labels replace repeated legends.
+            Ochre dotted segments, where present, mark the source's average effect
+            over the post-period; they are not published period-by-period trajectories.
         """),
         code("""
             fig, axes = plot_effects(
@@ -266,6 +287,9 @@ def build(name, title, description, reference):
                 title=figure_details['case'],
                 subtitle='Estimated effect paths · shared scales across all twelve methods',
                 ylabel=figure_details['effect'], xlabel='Year',
+                benchmark=replace(benchmark, context=benchmark.context + (
+                    ' Dotted segments: source mean, not period-specific effects.' if benchmark.value is not None else ''
+                )),
                 note=figure_details['periods'] + '. Shading marks the post-period; no uncertainty intervals are shown.',
             )
             effects_files = export_figure(fig, 'effects')
