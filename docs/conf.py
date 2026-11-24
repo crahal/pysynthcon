@@ -1,5 +1,5 @@
-project = "PySynth"
-author = "PySynth contributors"
+project = "PySynthCon"
+author = "PySynthCon contributors"
 release = "0.1.0"
 extensions = ["myst_parser", "sphinx.ext.autodoc", "sphinx.ext.napoleon", "sphinx.ext.viewcode", "sphinx.ext.mathjax"]
 source_suffix = {".rst": "restructuredtext", ".md": "markdown"}

@@ -5,6 +5,12 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Documentation and figures
+
+- Use the PySynthCon name in the README, citation, documentation and exported
+  figure credits. The README header shows the California SDID estimate with
+  separate layouts for desktop and mobile screens.
+
 ### Simulation and notebook outputs
 
 - Add a seeded, paired regional-policy simulation comparing outcome SCM and

@@ -1,8 +1,8 @@
 <h1 align="center">
   <a href="empirical_examples/california.ipynb">
     <picture>
-      <source media="(max-width: 600px)" srcset="docs/assets/pysynth-header-compact.svg">
-      <img src="docs/assets/pysynth-header.svg" width="100%" alt="PySynth — Synthetic control in Python. After California’s tobacco tax, cigarette sales averaged 15.6 fewer packs per person per year than its synthetic counterfactual, 1989–2000.">
+      <source media="(max-width: 600px)" srcset="docs/assets/pysynthcon-header-compact.svg">
+      <img src="docs/assets/pysynthcon-header.svg" width="100%" alt="PySynthCon — Synthetic control in Python. After California’s tobacco tax, cigarette sales averaged 15.6 fewer packs per person per year than its synthetic counterfactual, 1989–2000.">
     </picture>
   </a>
 </h1>
@@ -14,7 +14,7 @@
 
 **[Quick start](#quick-start) · [Five worked examples](#five-worked-examples) · [Estimators](#estimators) · [Documentation](#documentation)**
 
-PySynth lets you fit several synthetic controls to the same panel and see how the estimated effect changes with the method or donor pool. Compare held-out pretreatment predictions, refit after excluding donors, and put published benchmarks beside the estimates that reproduce them. The library builds on [pysyncon](https://github.com/sdfordham/pysyncon) and [SyntheticControlMethods](https://pypi.org/project/SyntheticControlMethods/).
+PySynthCon lets you fit several synthetic controls to the same panel and see how the estimated effect changes with the method or donor pool. Compare held-out pretreatment predictions, refit after excluding donors, and put published benchmarks beside the estimates that reproduce them. The library builds on [pysyncon](https://github.com/sdfordham/pysyncon) and [SyntheticControlMethods](https://pypi.org/project/SyntheticControlMethods/).
 
 ## Quick start
 
@@ -100,4 +100,4 @@ print(donor_sensitivity(panel, candidates).summary)
 - [Research workflows](docs/differentiation.md) · [Inference](docs/inference.md) · [Estimator and replication audit](docs/audit.md)
 - [Contributing and running tests](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-When publishing, cite PySynth together with the method papers and upstream packages used in your analysis. [Software citation](CITATION.cff) · [Method references](docs/references.md)
+When publishing, cite PySynthCon together with the method papers and upstream packages used in your analysis. [Software citation](CITATION.cff) · [Method references](docs/references.md)

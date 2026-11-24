@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="375" viewBox="0 0 1200 375" role="img" aria-labelledby="title desc">
-  <title id="title">PySynth · Synthetic control in Python</title>
+  <title id="title">PySynthCon · Synthetic control in Python</title>
   <desc id="desc">California Proposition 99. From 1970 to 2000, observed and synthetic cigarette sales track closely before the 1989 policy. The estimated mean SDID effect in 1989–2000 is −15.6 packs per capita per year.</desc>
   <!-- Data: synth-inference/synthdid at 70c1ce3eac58e28c30b67435ca377bb48baa9b8a.
        Paths: SyntheticDID().fit(DATASETS["california"].panel(load_dataset("california"))), observed and level-adjusted counterfactual. -->
@@ -18,7 +18,7 @@
     <path d="M3 19h13c6 0 11 0 18 0h9c8 0 12 13 20 13h5" stroke="#8EE4CE"/>
     <path d="M3 32h9c10 0 13-13 22-13" stroke="#FFB58B"/>
     </g>
-<text x="42" y="151" fill="#FCF7E9" font-family="Georgia, 'DejaVu Serif', serif" font-size="93" letter-spacing="-3.6"><tspan font-style="italic">Py</tspan><tspan>Synth</tspan></text>
+<text x="42" y="151" fill="#FCF7E9" font-family="Georgia, 'DejaVu Serif', serif" font-size="74" letter-spacing="-2" textLength="392" lengthAdjust="spacingAndGlyphs"><tspan font-style="italic">Py</tspan><tspan>SynthCon</tspan></text>
 <text x="48" y="205" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="400" text-anchor="start" fill="#C2D5D0" >Synthetic control in Python</text>
 <path d="M48.00 228.00L434.00 228.00" stroke="#345753" stroke-width="1" fill="none" />
 <text x="42" y="295" font-family="Georgia, 'DejaVu Serif', serif" font-size="62" font-weight="400" text-anchor="start" fill="#FFB58B" >−15.6</text>

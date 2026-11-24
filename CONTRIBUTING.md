@@ -1,4 +1,4 @@
-# Contributing to PySynth
+# Contributing to PySynthCon
 
 Reference-method changes must preserve the full fitting specification: no
 reduced restart counts, shortened lag histories, fixed predictor metrics, or

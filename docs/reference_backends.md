@@ -21,7 +21,7 @@ root or its subdirectories. Missing resources cause an explicit error; the
 library neither downloads them nor silently substitutes a different estimator.
 
 An explicit `r_library` or `PYSYNTH_R_LIBRARY` must name an existing
-directory. PySynth checks the path before launching R because R silently
+directory. PySynthCon checks the path before launching R because R silently
 drops nonexistent directories from its library search path.
 
 Once the local bundle is in place, install R, C/Fortran development tools and GLPK
@@ -48,8 +48,8 @@ The default `.r-library` is discovered when running from the checkout root.
 From another working directory, select its absolute path:
 
 ```sh
-export PYSYNTH_R_LIBRARY="/absolute/path/to/PySynth/.r-library"
-export PYSYNTH_REFERENCE_DIR="/absolute/path/to/PySynth/.local/reference/runtime"
+export PYSYNTH_R_LIBRARY="/absolute/path/to/PySynthCon/.r-library"
+export PYSYNTH_REFERENCE_DIR="/absolute/path/to/PySynthCon/.local/reference/runtime"
 ```
 
 Alternatively pass `r_library="/absolute/path/to/library"` to `SCUL`,

@@ -61,7 +61,7 @@ those weights before using its ATT to center an interval.
 
 The original reference algorithm can reach its 10,000-iteration cap before
 meeting its objective-decrease stopping rule. This is a genuine numerical
-limit, not a failed resampling plan. R returns those fits silently; PySynth
+limit, not a failed resampling plan. R returns those fits silently; PySynthCon
 reports the number of affected draws and which weight fits reached the cap.
 
 Use the **inference keyword** `max_iter=1_000_000`, as in the example above,

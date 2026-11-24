@@ -1,6 +1,6 @@
 # Validation, selection and donor sensitivity
 
-PySynth evaluates different estimator families through the same `Panel` and
+PySynthCon evaluates different estimator families through the same `Panel` and
 `Estimate` interfaces. Three questions are kept separate: how well a model
 predicts withheld pretreatment outcomes, which prespecified candidate to fit,
 and how the final estimate changes when donor eligibility changes. These

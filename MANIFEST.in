@@ -1,7 +1,7 @@
 include README.md CHANGELOG.md CONTRIBUTING.md CITATION.cff THIRD_PARTY_NOTICES.md
 include requirements-replication.txt
 recursive-include docs *.md *.rst *.py
-include docs/assets/pysynth-header.svg docs/assets/pysynth-header-compact.svg
+include docs/assets/pysynthcon-header.svg docs/assets/pysynthcon-header-compact.svg
 prune docs/_build
 include empirical_examples/basque.ipynb empirical_examples/california.ipynb
 include empirical_examples/germany.ipynb empirical_examples/kansas.ipynb

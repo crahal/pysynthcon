@@ -293,7 +293,7 @@ class TwoStageIndividualSC(IndividualSC):
     donors. Caller-supplied panels determine eligibility and time windows.
 
     ``options`` passes optimizer settings to the checked PySyncon adapter.
-    Explicit ``backend='mscmt', n_bootstrap=50`` retains PySynth's earlier
+    Explicit ``backend='mscmt', n_bootstrap=50`` retains PySynthCon's earlier
     variant: screen donors, then run ISC's time-series predictor groups and
     donor resampling. This variant is distinct from the authors' two-stage
     Python pipeline. ``backend='fixed_metric'`` remains a separate adaptation.

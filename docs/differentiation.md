@@ -1,6 +1,6 @@
-# What PySynth adds
+# What PySynthCon adds
 
-PySynth is a framework for comparing synthetic-control specifications across
+PySynthCon is a framework for comparing synthetic-control specifications across
 estimator families, checking their sensitivity and tracing results back to
 academic reference implementations. Its contribution is the shared research
 workflow: one panel definition, one effect convention, comparable diagnostics
@@ -14,7 +14,7 @@ The following comparison covers the linked public documentation and source
 reviewed on 24 November 2026. It describes scope, rather than claiming that a
 feature cannot be implemented with another package.
 
-| Project | Existing strengths | PySynth's additional role |
+| Project | Existing strengths | PySynthCon's additional role |
 |---|---|---|
 | [pysyncon](https://sdfordham.github.io/pysyncon/) | Classical, augmented, robust and penalized SCM; placebo tests, conformal intervals and academic examples. | Integrates those estimators with SCUL, MSCMT-based individual controls and SDID in a common result and comparison workflow. |
 | [SyntheticControlMethods](https://github.com/OscarEngelbrektson/SyntheticControlMethods) | SCM and differenced SCM, predictor balance, effect plots and in-space/in-time placebos. | Applies the same study definition and diagnostics to this backend and the other estimator families, with checked optimizer recovery. |
@@ -25,7 +25,7 @@ feature cannot be implemented with another package.
 Python SDID implementations also exist in
 [synthdid.py](https://github.com/d2cml-ai/synthdid.py) and
 [mlsynth](https://mlsynth.readthedocs.io/en/latest/sdid.html).
-PySynth does not claim to be the first Python SDID implementation, the first
+PySynthCon does not claim to be the first Python SDID implementation, the first
 comparison package or the first package with sensitivity checks. The independent
 numeric fixtures and [audit record](audit.md) establish the narrower claims made
 about this implementation.
@@ -113,13 +113,13 @@ budgets remain in force, so a full sensitivity exercise can be expensive.
 
 Nearest-neighbor screening followed by individual synthetic control is described
 by [Petrillo et al. (2025), section 2.3](https://eprints.whiterose.ac.uk/id/eprint/224118/1/Binder2025004.pdf).
-PySynth's 2SISC name credits that approach; the default and optional variants
+PySynthCon's 2SISC name credits that approach; the default and optional variants
 are documented in the [method guide](methods.md#two-stage-individual-synthetic-control-2sisc).
 Related donor-locality approaches include
 [Abadie and L'Hour's penalized SCM](https://doi.org/10.1080/01621459.2021.1971535)
 and [ClusterSC](https://proceedings.mlr.press/v258/rho25a.html).
 These are distinct algorithms, and none of their theoretical guarantees is
-automatically transferred to PySynth's nearest-neighbor variant.
+automatically transferred to PySynthCon's nearest-neighbor variant.
 
 The contribution here is reusable, inspectable software around these methods.
 A claim of methodological novelty or improved causal performance would require

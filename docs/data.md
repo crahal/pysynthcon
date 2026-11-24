@@ -21,7 +21,7 @@ panel = Panel.from_frame(
 
 Omitting `controls` uses all other observed units. Choose donors based on the
 research design: avoid units affected by the intervention, spillovers, or
-anticipation. PySynth cannot establish donor eligibility from outcome values.
+anticipation. PySynthCon cannot establish donor eligibility from outcome values.
 Missingness is not silently imputed and calendar gaps shared by every unit
 are not automatically filled. A period is an observed row: use a regular
 frequency when interpreting rolling horizons or first differences.

@@ -1,6 +1,6 @@
 # Third-party notices
 
-PySynth retains this repository's GPL-3.0 license. Dependencies remain under their
+PySynthCon retains this repository's GPL-3.0 license. Dependencies remain under their
 own licenses. Data downloads remain subject to their original terms and attribution.
 
 The SDID numerical solver is a Python adaptation of the synthdid reference

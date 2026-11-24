@@ -19,7 +19,7 @@ def _require(module):
         return __import__(module)
     except ImportError as exc:
         raise ImportError(
-            "Install PySynth's optional backends: pip install -e '.[backends]'"
+            "Install PySynthCon's optional backends: pip install -e '.[backends]'"
         ) from exc
 
 

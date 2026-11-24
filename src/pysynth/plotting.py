@@ -1618,11 +1618,11 @@ def save_figure(
             # Keep author-selected inch dimensions rather than crop to a
             # content-dependent tight bounding box. The figures use layout.
             if fmt == "pdf":
-                metadata = {"Creator": "PySynth", "CreationDate": None, "ModDate": None}
+                metadata = {"Creator": "PySynthCon", "CreationDate": None, "ModDate": None}
             elif fmt == "svg":
-                metadata = {"Creator": "PySynth", "Date": None}
+                metadata = {"Creator": "PySynthCon", "Date": None}
             else:
-                metadata = {"Software": "PySynth"}
+                metadata = {"Software": "PySynthCon"}
             figure.savefig(
                 destination,
                 format=fmt,

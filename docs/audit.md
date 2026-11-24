@@ -144,7 +144,7 @@ eligibility rules, covariates and population-inference design. ISC donor draws
 are sensitivity outputs, not the published study's full population-variance
 estimator. The 2SISC aggregate examples have no numerical target in the care
 study. Matching the core fitting specification does not reproduce its survey
-eligibility, event windows, covariates or population inference. PySynth counts
+eligibility, event windows, covariates or population inference. PySynthCon counts
 donors explicitly; the source's neighbor query also counts the treated case.
 Penalized and robust SCM notebook tuning values remain explicitly illustrative.
 

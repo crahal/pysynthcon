@@ -36,7 +36,7 @@ def author_recipe(panel, predictors, n_neighbors):
     """Independently reproduce src/utils.py's core sc_b operations.
 
     Use k+1 in its KDTree query so the treated entry leaves k actual donors.
-    Labels are sorted as in its pivoted frame. No PySynth optimizer helper is
+    Labels are sorted as in its pivoted frame. No PySynthCon optimizer helper is
     called: this is raw pysyncon with the authors' mean-predictor specification.
     """
     order = [panel.n_control, *range(panel.n_control)]

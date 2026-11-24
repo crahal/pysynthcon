@@ -34,7 +34,7 @@ with **glmnet 4.0-2**, the version recorded in their tutorial. The default
 
 The lasso objective is $\|y-a-Zb\|_2^2/(2n)+\alpha\|b\|_1$.
 Each training fold standardizes its donors; glmnet handles the intercept and
-response scaling. Weights can be negative and need not sum to one. PySynth's
+response scaling. Weights can be negative and need not sum to one. PySynthCon's
 `alpha` means glmnet's penalty **lambda**, not its elastic-net mixing parameter.
 
 Expanding training windows advance by one period. Both `initial_window` and
@@ -158,17 +158,17 @@ pretreatment path or identify unique donor weights. This is a limitation of
 that reduced specification; the canonical aggregate examples do not supply
 the care study's additional covariates.
 
-PySynth counts actual donors in `n_neighbors`. The authors' KDTree query counts
+PySynthCon counts actual donors in `n_neighbors`. The authors' KDTree query counts
 the treated case in `k_n`, normally leaving `k_n - 1` donors. Away from distance
-ties, query `k_n=k+1` corresponds to PySynth's `k` donors when `k` is smaller
+ties, query `k_n=k+1` corresponds to PySynthCon's `k` donors when `k` is smaller
 than the eligible donor count. The source also caps `k_n` at that count;
-PySynth permits retaining every eligible donor. Ties here follow Panel order. Panel construction determines
+PySynthCon permits retaining every eligible donor. Ties here follow Panel order. Panel construction determines
 eligibility and the observed time window; the study's survey filters and
 historical event window are not applied automatically.
 
 The default fit performs **no within-donor resampling**. The care paper's
 population bootstrap samples individual effect estimates; that is a different
-procedure and is not implemented here. To retain the earlier PySynth variant,
+procedure and is not implemented here. To retain the earlier PySynthCon variant,
 request it explicitly:
 
 ```python
@@ -233,7 +233,7 @@ than $(10^{-5}\widehat\sigma)^2$. `sparsify=False` skips the first phase.
 Objective-decrease convergence is not a global-accuracy certificate; final
 objectives, iteration counts, stopping status and dual gaps are returned.
 The California R reference itself reaches the time-weight iteration cap;
-PySynth warns while retaining that numerically matching result.
+PySynthCon warns while retaining that numerically matching result.
 
 Donor post-outcomes are intentionally used for time weights. Treated
 post-outcomes never determine weights. This version does not implement

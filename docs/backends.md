@@ -34,7 +34,7 @@ zero ridge penalty requires a centered design with full row rank. With
 dependent predictor rows, choose a positive penalty. Residualizing auxiliary
 covariates requires linearly independent centered covariates. When uniform
 weights already balance outcomes or covariates exactly, the corresponding
-scaled imbalance has a zero denominator. PySynth preserves the fitted weights
+scaled imbalance has a zero denominator. PySynthCon preserves the fitted weights
 and reports NaN for that diagnostic.
 
 RobustSynth requires explicit ridge and singular-value truncation choices;
@@ -72,7 +72,7 @@ search that reaches its cap can recover with Powell on the same full nested
 objective; explicitly supplied outer optimization settings are respected and
 fail visibly. Every recovery and outer termination is recorded in metadata.
 A successful SLSQP status also receives a check for numerical cancellation.
-PySynth evaluates an attainable decrease along a feasible direction using
+PySynthCon evaluates an attainable decrease along a feasible direction using
 centered predictor differences. If that decrease exceeds the upstream
 objective tolerance, CLARABEL refits the same quadratic and records the
 reason in `metadata["optimization"]["inner_recoveries"]`. This matters when
@@ -80,7 +80,7 @@ predictors have large common levels relative to the differences among donors.
 
 Custom backend fit options are passed through; unsupported options raise.
 Backend-specific uncertainty procedures are available on the exposed object
-where supported, but are not presented as a uniform PySynth interval.
+where supported, but are not presented as a uniform PySynthCon interval.
 
 ## SyntheticControlMethods
 
