@@ -64,11 +64,15 @@ count. The common grid uses the maximum training-fold lambda maximum and
 windows. Final prediction uses the original automatic path and exact refit at
 the selected penalty. No solver tolerances, path lengths, or iteration limits
 are reduced. `alpha` explicitly bypasses cross-validation when the researcher
-has specified a penalty in advance.
+has specified a penalty in advance. The original glmnet backend can fit
+this specification with a single post-treatment observation.
 
 `backend="python"` is retained as an explicitly requested adaptation. It uses
 sklearn and a common grid even for median selection; it is not an exact
-replication. None of the empirical notebooks uses this backend.
+replication. This grid uses the scale of the training-fold correlations.
+Folds with identically zero correlations contribute validation errors at every
+penalty and do not set the grid endpoints. The dual-gap check uses the
+training outcome variance. None of the empirical notebooks uses this backend.
 
 ## Individual synthetic control (ISC)
 

@@ -29,7 +29,14 @@ method's identity metric unless the caller explicitly supplies another metric.
 AugSynth uses the
 no-covariate Ridge specification, with its upstream cross-validation. The
 authors’ `augsynth` code omits the last possible holdout block; that convention
-and its one-standard-error selection are deliberately retained.
+and its one-standard-error selection are deliberately retained. An explicit
+zero ridge penalty requires a centered design with full row rank. With
+dependent predictor rows, choose a positive penalty. Residualizing auxiliary
+covariates requires linearly independent centered covariates. When uniform
+weights already balance outcomes or covariates exactly, the corresponding
+scaled imbalance has a zero denominator. PySynth preserves the fitted weights
+and reports NaN for that diagnostic.
+
 RobustSynth requires explicit ridge and singular-value truncation choices;
 it uses all donor periods for its denoising step and predicts from the
 denoised matrix, following the paper’s Algorithm 1. Because `Panel` requires
@@ -64,9 +71,12 @@ quadratic, including the pairwise penalty where applicable. A default outer
 search that reaches its cap can recover with Powell on the same full nested
 objective; explicitly supplied outer optimization settings are respected and
 fail visibly. Every recovery and outer termination is recorded in metadata.
-Successful upstream solves are retained. This corrects previously unchecked
-failures, including failures found in the canonical California and Germany
-fits; it does not discard predictors or use fewer optimization steps.
+A successful SLSQP status also receives a check for numerical cancellation.
+PySynth evaluates an attainable decrease along a feasible direction using
+centered predictor differences. If that decrease exceeds the upstream
+objective tolerance, CLARABEL refits the same quadratic and records the
+reason in `metadata["optimization"]["inner_recoveries"]`. This matters when
+predictors have large common levels relative to the differences among donors.
 
 Custom backend fit options are passed through; unsupported options raise.
 Backend-specific uncertainty procedures are available on the exposed object

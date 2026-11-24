@@ -262,3 +262,54 @@ def test_scm_predictor_metric_must_define_nonnegative_nonzero_distance(panel, me
     pytest.importorskip("pysyncon")
     with pytest.raises(ValueError, match="custom_V"):
         PySyncon(options={"custom_V": metric}).fit(panel)
+
+
+@pytest.mark.parametrize("method, penalty", [("synth", 0), ("pensynth", 0.01)])
+def test_large_common_level_does_not_mask_feasible_qp_improvements(method, penalty):
+    pytest.importorskip("pysyncon")
+    # For w on the second donor, the half-loss is
+    # (2w - .8)^2 / 2 + penalty * (.64 + .8w) / 2.
+    values = np.tile([100000.0, 100002.0, 100000.8], (6, 1))
+    values[4:, -1] += 1
+    panel = Panel(values, 2, 4)
+    options = {"custom_V": [1.0] * 4} if not penalty else {"lambda_": penalty}
+    result = PySyncon(method, options=options).fit(panel)
+    expected = 0.4 - 0.1 * penalty
+    np.testing.assert_allclose(result.weights, [1 - expected, expected], atol=1e-7)
+    assert result.att == pytest.approx(1 + 0.2 * penalty, abs=1e-6)
+
+
+@pytest.mark.parametrize("covariates", [False, True])
+def test_augmented_exact_uniform_fit_keeps_estimate_when_scaled_imbalance_undefined(covariates):
+    pytest.importorskip("pysyncon")
+    p = Panel([[0, 2, 1], [3, 1, 2], [3, 5, 4], [0, 2, 2], [1, 1, 2]], 2, 3)
+    adapter = PySyncon(
+        "augsynth", dataprep=_dataprep(p), options={"lambda_": 0.1, "use_covariates": covariates}
+    )
+    fit = adapter.fit(p)
+    np.testing.assert_allclose(fit.weights, 0.5, atol=1e-10)
+    assert fit.att == pytest.approx(1)
+    assert np.isnan(adapter.backend_.scaled_l2_imbalance)
+    if covariates:
+        assert adapter.backend_.covariate_l2_imbalance == pytest.approx(0, abs=1e-10)
+
+
+def test_zero_ridge_cannot_invert_rank_deficient_augmented_design():
+    pytest.importorskip("pysyncon")
+    rng = np.random.default_rng(0)
+    panel = Panel(rng.normal(size=(20, 5)), 4, 16)
+    # Floating-point inv() can return weights summing to -14 on this panel
+    # despite a centered design of rank at most 3 and a 16-by-16 Gram matrix.
+    with pytest.raises(ValueError, match="lambda_=0 requires a full-row-rank"):
+        PySyncon("augsynth", options={"lambda_": 0.0}).fit(panel)
+    corrected = PySyncon("augsynth", options={"lambda_": 0.1}).fit(panel)
+    assert corrected.weights.sum() == pytest.approx(1)
+
+
+def test_residualizing_duplicate_covariates_rejects_singular_ols(panel):
+    pytest.importorskip("pysyncon")
+    dp = _dataprep(panel)
+    dp.foo["duplicate"] = dp.foo["outcome"]
+    dp.predictors = ["outcome", "duplicate"]
+    with pytest.raises(ValueError, match="linearly independent centered covariates"):
+        PySyncon("augsynth", dataprep=dp, options={"lambda_": 0.1, "residualize": True}).fit(panel)

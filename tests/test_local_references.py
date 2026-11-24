@@ -68,9 +68,13 @@ def test_missing_local_resources_never_fall_back(checkout, monkeypatch, panel, m
 
 
 def test_explicit_library_takes_precedence(checkout, monkeypatch):
+    (checkout / "environment-library").mkdir()
+    (checkout / "argument-library").mkdir()
     monkeypatch.setenv("PYSYNTH_R_LIBRARY", str(checkout / "environment-library"))
     assert _r.reference_library() == str(checkout / "environment-library")
     assert _r.reference_library(checkout / "argument-library") == str(checkout / "argument-library")
+    with pytest.raises(ImportError, match="Selected R library"):
+        _r.reference_library(checkout / "typo")
 
 
 def test_reference_process_uses_local_file_and_preserves_failure(checkout, monkeypatch):

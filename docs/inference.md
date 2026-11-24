@@ -53,7 +53,9 @@ point estimate was fit with `sparsify=False`. The full default final-stage budge
 is 10,000 iterations. A draw reaching that limit remains available, as it does in
 R; the Python API reports one warning with the number of affected draws and keeps
 complete convergence diagnostics in `uncertainty.metadata["solver_diagnostics"]`.
-The original penalties are not recalculated from each resample.
+When you pass an existing fit, the library verifies its sample, labels,
+simplex weights, and the counterfactual path and level correction implied by
+those weights before using its ATT to center an interval.
 
 ### Handling iteration-limit warnings
 

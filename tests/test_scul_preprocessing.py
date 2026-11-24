@@ -62,3 +62,14 @@ def test_near_zero_variance_target_is_rejected_before_fitting():
 def test_single_validation_fold_cannot_define_the_sample_sd_rule(panel, backend):
     with pytest.raises(ValueError, match="1se rule needs at least two"):
         SCUL(backend=backend, initial_window=18, horizon=2, selection="1se").fit(panel)
+
+
+def test_python_scul_preserves_rolling_cv_after_changing_outcome_units(panel):
+    model = SCUL(backend="python", n_alphas=8, selection="min")
+    original = model.fit(panel)
+    rescaled = model.fit(Panel(1e-18 * panel.y, panel.n_control, panel.n_pre))
+    np.testing.assert_allclose(rescaled.weights, original.weights, atol=1e-8)
+    assert rescaled.att / 1e-18 == pytest.approx(original.att, abs=1e-8)
+    np.testing.assert_allclose(
+        np.array(rescaled.metadata["alphas"]) / 1e-18, original.metadata["alphas"]
+    )

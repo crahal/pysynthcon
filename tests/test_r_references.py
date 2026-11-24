@@ -216,3 +216,13 @@ def test_isc_fit_many_matches_original_parallel_sampling_stream(model):
         np.testing.assert_array_equal(
             result.estimates[key].weights, repeated.estimates[key].weights
         )
+
+
+def test_fixed_scul_penalty_bypasses_cv_for_one_post_period():
+    old = json.loads((FIXTURES / "scul_r.json").read_text())
+    short = Panel(old["y"][:21], 6, 20)
+    full = Panel(old["y"], 6, 20)
+    expected = SCUL(alpha=0.1).fit(full)
+    actual = SCUL(alpha=0.1).fit(short)
+    assert actual.metadata["origins"] == []
+    np.testing.assert_allclose(actual.weights, expected.weights, atol=1e-12)

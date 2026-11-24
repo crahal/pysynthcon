@@ -79,6 +79,8 @@ class SyntheticDID:
     def _settings(self, panel):
         if not isinstance(self.max_iter, (int, np.integer)) or self.max_iter < 2:
             raise ValueError("max_iter must be an integer >= 2")
+        if not isinstance(self.sparsify, (bool, np.bool_)):
+            raise ValueError("sparsify must be a boolean")
         differences = np.diff(panel.control[: panel.n_pre], axis=0).ravel()
         if self.noise is None and len(differences) < 2:
             raise ValueError("At least two donor first differences are needed to estimate noise")
@@ -214,8 +216,8 @@ class SyntheticDID:
         With ``estimate`` supplied, the default budget is inherited from that
         fit, irrespective of this object's ``max_iter``. Pass ``max_iter`` here
         to extend the resample budget; it must be at least the inherited budget.
-        The original point fit, penalties, tolerance, sparsification and starting
-        weights remain unchanged. This can differ from the finite-iteration
+        Both budgets use the reference resampling procedure's default
+        sparsification, including after a nonsparse point fit. This can differ from the finite-iteration
         reference result. ``max_iter`` is unavailable for fixed-weight jackknife.
 
         ``require_convergence=True`` raises if any resample weight fit reaches
@@ -280,6 +282,20 @@ class SyntheticDID:
             for weights in (omega, lam)
         ):
             raise ValueError("estimate must contain finite simplex donor and time weights")
+        if estimate is not None:
+            # Estimate exposes editable Series. A panel digest establishes the
+            # sample identity, but cannot detect a changed counterfactual or
+            # simplex-valid weights that no longer produce the reported ATT.
+            offset = lam @ (panel.treated[: panel.n_pre] - panel.control[: panel.n_pre] @ omega)
+            implied = panel.control @ omega + offset
+            if (
+                not fitted.counterfactual.index.equals(panel.times)
+                or not np.isclose(fitted.intercept, offset, rtol=1e-12, atol=0.0)
+                or not np.allclose(fitted.counterfactual, implied, rtol=1e-12, atol=0.0)
+            ):
+                raise ValueError(
+                    "estimate path and intercept must agree with the fitted SDID weights"
+                )
         if method == "jackknife" and np.count_nonzero(omega) == 1:
             raise ValueError("Fixed-weight jackknife needs at least two nonzero donor weights")
         n = panel.y.shape[1]
@@ -425,7 +441,7 @@ class SDIDInference:
         """Return the normal interval at the specified coverage level."""
         if not np.isfinite(level) or not 0 < level < 1:
             raise ValueError("level must be strictly between zero and one")
-        width = norm.ppf((1 + level) / 2) * self.standard_error
+        width = norm.isf((1 - level) / 2) * self.standard_error
         return float(self.estimate - width), float(self.estimate + width)
 
 

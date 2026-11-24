@@ -15,8 +15,8 @@ from scipy.optimize import minimize
 
 def solve(x):
     x = np.asarray(x, dtype=float)
-    if x.ndim != 2 or not np.isfinite(x).all():
-        raise ValueError("MSCMT quadratic design must be a finite matrix")
+    if x.ndim != 2 or not all(x.shape) or not np.isfinite(x).all():
+        raise ValueError("MSCMT quadratic design must be a nonempty finite matrix")
     scale = float(np.max(np.abs(x)))
     p = x.shape[1]
     if scale == 0:
@@ -41,15 +41,24 @@ def solve(x):
     )
     if not result.success or not np.isfinite(result.x).all():
         raise RuntimeError(f"MSCMT inner quadratic repair failed: {result.message}")
+    if result.x.min() < -1e-8 or abs(result.x.sum() - 1) > 1e-8:
+        raise RuntimeError("MSCMT inner quadratic repair returned infeasible weights")
     w = np.maximum(result.x, 0)
     w /= w.sum()
     # On a simplex, this Frank-Wolfe gap bounds suboptimality of the convex
     # quadratic. Check it independently of the optimizer's stopping flag.
     gradient = jac(w)
-    gap = float(w @ gradient - gradient.min())
+    gap = max(0.0, float(w @ gradient - gradient.min()))
     if gap > 1e-8:
         raise RuntimeError(f"MSCMT inner quadratic repair has excessive KKT gap {gap:g}")
-    return w, {"dual_gap": gap, "iterations": int(result.nit), "objective": fun(w) * scale**2}
+    # The Gram-matrix expression can be negative through cancellation at an
+    # exact fit. Measure the residual directly in the original objective.
+    residual = (a @ w) * scale
+    rms = np.linalg.norm(residual / np.sqrt(len(residual)))
+    objective = float(rms * rms)
+    if not np.isfinite(objective):
+        raise RuntimeError("MSCMT weighted residual objective exceeds floating-point range")
+    return w, {"dual_gap": gap, "iterations": int(result.nit), "objective": objective}
 
 
 if __name__ == "__main__":

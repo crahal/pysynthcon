@@ -142,3 +142,11 @@ def test_original_isc_requires_named_groups_instead_of_fixed_metric_features(ind
 def test_original_isc_rejects_invalid_r_seeds(individual_panel, seed):
     with pytest.raises(ValueError, match="random_state must be"):
         IndividualSC(random_state=seed).fit(individual_panel)
+
+
+@pytest.mark.parametrize("scale", [1e-180, 1e180])
+def test_two_stage_order_survives_nonrepresentable_squared_distances(scale):
+    panel = Panel(np.array([[3, 1, 0], [2, 1, 0], [4, 2, 1]]) * scale, 2, 2)
+    fit = TwoStageIndividualSC(n_neighbors=1).fit(panel)
+    assert fit.metadata["selected_donors"] == [1]
+    np.testing.assert_array_equal(fit.weights, [0, 1])

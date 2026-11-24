@@ -46,14 +46,16 @@ def _reference_preprocessing(panel, training_ends):
 def _standardize(x, y):
     mean = x.mean(axis=0)
     scale = x.std(axis=0, ddof=0)
-    scale[scale < np.finfo(float).eps] = 1.0
+    scale[scale == 0] = 1.0
     return (x - mean) / scale, y - y.mean(), mean, scale
 
 
 def _path(x, y, alphas, max_iter, tol):
     z, target, mean, scale = _standardize(x, y)
+    if np.all(target == 0):
+        return np.zeros((x.shape[1], len(alphas))), np.full(len(alphas), y[0])
     _, coef, gaps = lasso_path(z, target, alphas=alphas, max_iter=max_iter, tol=tol)
-    if np.any(gaps > tol * max(float(target @ target / len(y)), 1.0) * 10):
+    if np.any(gaps > tol * float(target @ target / len(y))):
         raise RuntimeError("SCUL lasso path did not converge; increase max_iter or tolerance")
     weights = coef / scale[:, None]
     intercepts = y.mean() - mean @ weights
@@ -138,8 +140,11 @@ class SCUL:
                 maxima = []
                 for end in origins:
                     z, target, _, _ = _standardize(x[:end], y[:end])
-                    maxima.append(max(float(np.max(np.abs(z.T @ target)) / end), 1e-12))
-                grid = np.geomspace(max(maxima), min(maxima) * 0.01, self.n_alphas)
+                    maxima.append(float(np.max(np.abs(z.T @ target)) / end))
+                # A zero-correlation fold has intercept-only predictions
+                # for every positive penalty and supplies no scale for CV.
+                positive = [value for value in maxima if value > 0] or [1.0]
+                grid = np.geomspace(max(positive), min(positive) * 0.01, self.n_alphas)
             else:
                 grid = np.asarray(self.alphas, dtype=float)
                 if (
@@ -185,7 +190,9 @@ class SCUL:
         if self.alpha is not None and (not np.isfinite(self.alpha) or self.alpha <= 0):
             raise ValueError("alpha must be finite and strictly positive")
         n_post = len(panel.y) - panel.n_pre
-        initial = n_post if self.initial_window is None else self.initial_window
+        initial = self.initial_window
+        if initial is None:
+            initial = panel.n_pre if self.alpha is not None else n_post
         horizon = n_post if self.horizon is None else self.horizon
         if not isinstance(initial, (int, np.integer)) or initial < 2:
             raise ValueError("initial_window must be an integer >= 2")

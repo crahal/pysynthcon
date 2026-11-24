@@ -153,3 +153,20 @@ def test_inference_rejects_invalid_fitted_simplex(multi_panel, weight_type, bad_
     invalid = replace(estimate, **{weight_type: changed})
     with pytest.raises(ValueError, match="finite simplex"):
         SyntheticDID().inference(multi_panel, method="jackknife", estimate=invalid)
+
+
+def test_modified_path_cannot_center_a_valid_sdid_interval(multi_panel):
+    from dataclasses import replace
+
+    model = SyntheticDID()
+    fit = model.fit(multi_panel)
+    other = replace(fit, counterfactual=fit.counterfactual + 1)
+    with pytest.raises(ValueError, match="agree with the fitted SDID weights"):
+        model.inference(multi_panel, estimate=other, method="jackknife")
+
+
+def test_normal_interval_at_largest_representable_coverage(multi_panel):
+    result = SyntheticDID().inference(multi_panel, method="jackknife")
+    bounds = result.confidence_interval(np.nextafter(1.0, 0.0))
+    assert np.isfinite(bounds).all()
+    assert bounds[0] < result.estimate < bounds[1]

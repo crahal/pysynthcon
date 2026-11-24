@@ -51,7 +51,11 @@ def reference_library(r_library=None):
     """Use the explicit library or the checkout's existing local installation."""
     library = r_library or os.environ.get("PYSYNTH_R_LIBRARY")
     if library:
-        return str(Path(library).expanduser().resolve())
+        selected = Path(library).expanduser().resolve()
+        if not selected.is_dir():
+            # R silently drops nonexistent directories from .libPaths().
+            raise ImportError(f"Selected R library directory does not exist: {selected}")
+        return str(selected)
     local = _checkout_root() / ".r-library"
     return str(local) if local.is_dir() else None
 

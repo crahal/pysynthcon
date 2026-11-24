@@ -20,6 +20,10 @@ installed R packages. The runtime directory is discovered from the checkout
 root or its subdirectories. Missing resources cause an explicit error; the
 library neither downloads them nor silently substitutes a different estimator.
 
+An explicit `r_library` or `PYSYNTH_R_LIBRARY` must name an existing
+directory. PySynth checks the path before launching R because R silently
+drops nonexistent directories from its library search path.
+
 Once the local bundle is in place, install R, C/Fortran development tools and GLPK
 headers. On Debian or Ubuntu:
 

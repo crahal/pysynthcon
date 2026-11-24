@@ -24,3 +24,9 @@ def test_duplicate_sampled_donors_keep_identical_quadratic():
     assert weights[1:].sum() == pytest.approx(0.7, abs=1e-10)
     assert diagnostics["objective"] == pytest.approx(0.1)
     assert diagnostics["dual_gap"] < 1e-10
+
+
+def test_exact_fit_has_zero_loss_even_when_squared_scale_overflows():
+    weights, diagnostics = solve([[-1e200, 1e200]])
+    np.testing.assert_array_equal(weights, [0.5, 0.5])
+    assert diagnostics["objective"] == 0.0

@@ -37,6 +37,26 @@ class _UpstreamOptimizationFailure(RuntimeError):
     """An upstream solver returned an unsuccessful or invalid result."""
 
 
+def _feasible_improvement(weights, arguments):
+    """Attainable decrease on the best-gradient vertex direction (half-loss units)."""
+    # On the simplex we can center every donor on the treated predictor.
+    # The upstream expanded loss can lose all finite-difference precision
+    # for large common levels, even while reporting successful termination.
+    delta = arguments["X0"] - arguments["X1"][:, None]
+    v = arguments["V_mat"]
+    residual = delta @ weights
+    gradient = delta.T @ (v @ residual)
+    penalty = arguments.get("lambda_", 0.0)
+    if penalty:
+        gradient += 0.5 * penalty * np.sum(delta * (v @ delta), axis=0)
+    vertex = int(np.argmin(gradient))
+    gap = max(0.0, float(weights @ gradient - gradient[vertex]))
+    change = delta[:, vertex] - residual
+    curvature = float(change @ (v @ change))
+    step = min(1.0, gap / curvature) if curvature > 0 else 1.0
+    return step * (gap - 0.5 * step * curvature)
+
+
 def _recover_inner_qp(arguments):
     """Solve the identical simplex QP after upstream SLSQP reports failure."""
     import cvxpy as cp
@@ -144,11 +164,19 @@ def _checked_upstream_optimizers(model, *, recover_outer=True):
         signature = inspect.signature(original_inner)
 
         def inner(*args, **kwargs):
+            arguments = signature.bind(*args, **kwargs)
+            arguments.apply_defaults()
             try:
-                return verified_inner(*args, **kwargs)
+                weights, loss = verified_inner(*args, **kwargs)
+                improvement = _feasible_improvement(weights, arguments.arguments)
+                ftol = arguments.arguments["qp_options"].get("ftol", 1e-6)
+                if improvement > ftol:
+                    raise _UpstreamOptimizationFailure(
+                        f"feasible simplex step decreases inner loss by {improvement:g} "
+                        f"(solver tolerance {ftol:g})"
+                    )
+                return weights, loss
             except _UpstreamOptimizationFailure as exc:
-                arguments = signature.bind(*args, **kwargs)
-                arguments.apply_defaults()
                 result = _recover_inner_qp(arguments.arguments)
                 diagnostics["inner_recoveries"].append(
                     {
@@ -163,6 +191,62 @@ def _checked_upstream_optimizers(model, *, recover_outer=True):
     if "minimize" in model.fit.__func__.__code__.co_names:
         model.fit = checked(model.fit, "outer")
     model.optimization_diagnostics_ = diagnostics
+
+
+def _fit_augmented(model, dataprep, options):
+    """Preserve completed ridge fits when a scaled imbalance has a zero denominator."""
+    if options.get("residualize", False) and options.get("use_covariates", True):
+        covariates, _ = dataprep.make_covariate_mats()
+        centered = covariates.subtract(covariates.mean(axis=1), axis=0).to_numpy()
+        if centered.size and np.linalg.matrix_rank(centered) < len(centered):
+            raise ValueError(
+                "Residualized AugSynth requires linearly independent centered covariates"
+            )
+    if options.get("lambda_") == 0:
+        original_solve = model.solve_ridge
+
+        def solve_ridge(A, B, W, lambda_):
+            # The reference inverts B B' directly. A singular Gram matrix
+            # can have a floating-point inverse with enormous spurious
+            # entries, returning weights whose sum differs greatly from one.
+            if lambda_ == 0 and np.linalg.matrix_rank(B) < B.shape[0]:
+                raise ValueError(
+                    "AugSynth with lambda_=0 requires a full-row-rank centered design; "
+                    "choose a positive ridge penalty for this panel"
+                )
+            return original_solve(A, B, W, lambda_)
+
+        model.solve_ridge = solve_ridge
+    try:
+        model.fit(dataprep=dataprep, **options)
+    except ZeroDivisionError:
+        # Pinned AugSynth computes these descriptive ratios after completing
+        # all weight, outcome-model and bias calculations. Handle only a
+        # demonstrably zero diagnostic denominator, leaving fit errors visible.
+        if model.unif_l2_imbalance is None:
+            raise
+        if model.unif_l2_imbalance == 0:
+            model.scaled_l2_imbalance = np.nan
+        if not options.get("use_covariates", True):
+            if model.unif_l2_imbalance != 0:
+                raise
+            return
+        z0, z1 = dataprep.make_covariate_mats()
+        if options.get("residualize", False):
+            center = z0.mean(axis=1)
+            z0, z1 = z0.subtract(center, axis=0), z1 - center
+        else:
+            x0, x1 = dataprep.make_outcome_mats()
+            _, _, z0, z1 = model._normalize(x0, x1, z0, z1)
+        uniform = np.full(len(model.W), 1 / len(model.W))
+        denominator = np.linalg.norm(z0.to_numpy() @ uniform - z1.to_numpy())
+        if model.unif_l2_imbalance != 0 and denominator != 0:
+            raise
+        imbalance = np.linalg.norm(z0.to_numpy() @ model.W - z1.to_numpy())
+        model.covariate_l2_imbalance = float(imbalance)
+        model.scaled_covariate_l2_imbalance = (
+            float(imbalance / denominator) if denominator else np.nan
+        )
 
 
 def _fit_robust(model, dataprep, panel, *, lambda_, threshold=None, sv_count=None):
@@ -225,7 +309,12 @@ class PySyncon:
     simplex solves are recovered on the same quadratic objective. Failed
     default outer searches are recovered with Powell; explicit iteration
     budgets instead raise on failure. Recovery attempts are recorded in
-    result metadata, without claiming global optimality of the nested search.
+    result metadata. A feasible step that improves the inner objective by
+    more than its solver tolerance triggers the same recovery. AugSynth
+    reports an undefined scaled imbalance as NaN when uniform donors
+    already balance the corresponding outcomes or covariates exactly. Its
+    unregularized fit requires a full-row-rank centered design, and its
+    residualization requires linearly independent centered covariates.
     """
 
     method: str = "synth"
@@ -316,6 +405,8 @@ class PySyncon:
         counterfactual = None
         if self.method == "robust":
             counterfactual = _fit_robust(model, dp, panel, **options)
+        elif self.method == "augsynth":
+            _fit_augmented(model, dp, options)
         else:
             model.fit(dataprep=dp, **options)
         self.backend_ = model
@@ -368,6 +459,7 @@ class SCM:
 
     def fit(self, panel: Panel) -> Estimate:
         """Fit the upstream model on a canonical integer-indexed panel."""
+        self.backend_ = None
         upstream = _require("SyntheticControlMethods")
         if self.method not in {"synth", "diffsynth"}:
             raise ValueError("method must be synth or diffsynth")

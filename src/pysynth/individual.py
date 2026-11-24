@@ -423,11 +423,30 @@ class TwoStageIndividualSC(IndividualSC):
             or self.n_neighbors < 1
         ):
             raise ValueError("n_neighbors must be a positive integer")
-        distances = np.sum((x - target[:, None]) ** 2, axis=0)
+        with np.errstate(over="ignore", under="ignore"):
+            difference = x - target[:, None]
+            distances = np.sum(difference**2, axis=0)
+            order_by = distances
+            if not np.isfinite(distances).all() or np.any(
+                (distances == 0) & np.any(difference != 0, axis=0)
+            ):
+                # Norms preserve the ordering when squared distances overflow
+                # or underflow. Half-scale only when subtraction itself overflows.
+                if not np.isfinite(difference).all():
+                    difference = x * 0.5 - target[:, None] * 0.5
+                magnitude = np.max(np.abs(difference), axis=0)
+                nonzero = magnitude > 0
+                order_by = np.full(x.shape[1], -np.inf)
+                normalized = difference[:, nonzero] / magnitude[nonzero]
+                order_by[nonzero] = np.log(magnitude[nonzero]) + 0.5 * np.log(
+                    np.sum(normalized**2, axis=0)
+                )
         k = min(self.n_neighbors, x.shape[1])
-        chosen = np.sort(np.argsort(distances, kind="stable")[:k])
+        chosen = np.sort(np.argsort(order_by, kind="stable")[:k])
         return chosen, {
             "donor_selection": "nearest_neighbors",
             "n_neighbors": self.n_neighbors,
-            "squared_distances": distances.tolist(),
+            "squared_distances": [
+                float(value) if np.isfinite(value) else None for value in distances
+            ],
         }
