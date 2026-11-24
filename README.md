@@ -55,7 +55,7 @@ The `backends` extra pins pysyncon replication fixes.
 
 ```python
 from pysynth import (
-    SyntheticControl, SCUL, IndividualSC, TwoStageIndividualSC, SyntheticDID, compare,
+    SyntheticControl, TwoStageIndividualSC, SyntheticDID, compare,
 )
 from pysynth.datasets import DATASETS, load_dataset
 
@@ -64,8 +64,6 @@ panel = DATASETS["california"].panel(data)
 
 models = {
     "SCM": SyntheticControl(),
-    "SCUL": SCUL(initial_window=5, horizon=12),
-    "ISC": IndividualSC(),
     "2SISC": TwoStageIndividualSC(n_neighbors=10),
     "SDID": SyntheticDID(),
 }
@@ -73,6 +71,17 @@ fits = {name: model.fit(panel) for name, model in models.items()}
 print(compare(fits))
 print(fits["SDID"].att)  # approximately -15.60382787 packs per capita
 fits["SDID"].plot()
+```
+
+With the local R bundle installed, include the original SCUL and ISC fits in
+the same comparison.
+
+```python
+from pysynth import SCUL, IndividualSC
+
+fits["SCUL"] = SCUL(initial_window=5, horizon=12).fit(panel)
+fits["ISC"] = IndividualSC().fit(panel)
+print(compare(fits))
 ```
 
 SDID's reference stopping rule reaches its iteration cap for one California
@@ -211,7 +220,7 @@ reproduction / difference** annotations directly beside the matching curves,
 panels and ATT rows. Separate historical fits receive their own reference row
 or panel. Two further figures label pretreatment validation and donor-exclusion
 sensitivity results directly. Expandable notes retain full specifications
-and audit tables; download links follow each figure. Use
+and audit tables. Local export paths follow each figure. Use
 `reference_style="strip"` for the earlier source-strip layout.
 Rerunning a notebook
 creates local PDF, SVG and PNG exports, CSVs of source comparisons and estimates,

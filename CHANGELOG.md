@@ -5,6 +5,34 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Estimator and replication audit
+
+- Check successful pysyncon simplex solves for a feasible step that improves
+  the objective beyond the solver tolerance. Recover the same quadratic when
+  this check fails. Handle undefined scaled imbalance after a completed
+  AugSynth fit and reject singular unregularized or residualized designs.
+- Validate complete, finite, aligned paths before computing effects, placebo
+  ranks or validation scores. Preserve refit results when a custom estimator
+  reuses a prediction buffer. Check an existing SDID fit against the
+  counterfactual and intercept implied by its weights.
+- Reject bare strings passed as collections of unit IDs. This prevents
+  `treated_units="CA"` from silently assigning treatment to units `C` and `A`.
+  In placebo output, `at_least_treated_ratio` records the rank comparison
+  even when the displayed post/pre RMSPE ratio exceeds floating-point range.
+- Correct numeric scaling in SCUL's optional Python backend, 2SISC neighbor
+  ordering and extreme placebo ratios. Permit a fixed SCUL penalty with one
+  post-treatment observation in the original R backend.
+- Validate historical calendars and Kansas's sixteen quarterly effects.
+  Distinguish the Basque paper's qualitative headline from its Figure 2
+  percentage series. Direct labels show a bound for differences smaller
+  than display precision. CSVs retain the full numerical difference.
+  Put grouped solver warnings below notebook figures. The Kansas donor
+  sensitivity chart labels states using the study's FIPS-to-name mapping.
+- Limit notebook execution to the four published examples, and report a
+  missing notebook as an error. Include only those notebooks and the two
+  development scripts in their respective source-distribution directories.
+  Check explicitly supplied R library directories before a reference fit.
+
 ### Direct figure annotations
 
 - Label observed and counterfactual curves at their endpoints; place sourced
@@ -17,7 +45,7 @@ versioning; the API may evolve during the 0.x research releases.
 - Label validation minima, baseline ATTs and the donor exclusions responsible
   for the largest sensitivity changes directly on the evaluation figures.
 - Move full specifications and audit tables into expandable notebook sections
-  below the figures; retain concise source citations and local export links.
+  below the figures, with concise source citations and local export paths.
 
 ### SDID inference convergence
 

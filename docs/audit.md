@@ -5,6 +5,43 @@ empirical comparisons, numerical failure handling and reproducibility of the
 library. It distinguishes reproduction of a paper's study from reproduction of
 its authors' software and from applying that method to a new dataset.
 
+## November 24 follow-up audit
+
+We tested the public estimator, comparison, inference and plotting interfaces
+with analytic panels, malformed results, shared prediction buffers and the
+pinned datasets. Separately executed R checks covered SCUL and the SDID point
+and variance estimators. The following issues affected what a researcher
+could conclude from the output.
+
+| Reproducible finding | Correction |
+| --- | --- |
+| Adding a common level of 100,000 to an exact two-donor blend moved the fitted weights from 0.6/0.4 to roughly 0.5/0.5 even though pysyncon's solver reported success. | Check the attainable improvement along a feasible simplex direction. Recover the same inner quadratic if that improvement exceeds its tolerance. In the Basque common-sample pysyncon SCM this changes the ATT from −0.973575 to −0.993457 thousand 1986 US dollars per capita. |
+| A zero ridge penalty on a singular AugSynth design could produce weights summing to −14. A different, valid fit could crash while reporting a ratio with a zero denominator. | Check the rank required by the reference inverse. Retain completed weights when only the descriptive scaled imbalance is undefined. |
+| A missing final counterfactual could silently drop a period from the ATT and produce a placebo rank. An estimator reusing the same output buffer could overwrite earlier donor-exclusion fits. | Check labels, coverage and finite outcomes before scoring. Snapshot each sensitivity fit and placebo fit. Test explicit donor labels and extreme ratios. |
+| With `CA`, `C` and `A` in the data, `treated_units="CA"` could select two treated units and move California into the donor pool. | Reject bare strings in arguments for collections of unit IDs. Both `treated_unit="CA"` and `treated_units=["CA"]` identify California correctly. |
+| Supplied SDID results could contain a counterfactual that disagreed with the stored weights. | Reconstruct the offset and counterfactual from the supplied panel and weights before using a fitted estimate for inference. |
+| A plausible average could pass a replication check on a different calendar or conceal quarterly errors in Kansas. | Require the historical time index and treatment boundary. Check the Kansas ATT and all sixteen quarterly effects at their respective printed precisions. See the [authors' vignette](https://github.com/ebenmichael/augsynth/blob/7e70072232fe75057aa8b5d7af08c7e1aef53ae8/vignettes/singlesynth-vignette.md#L217-L241). |
+| The Basque figure reported a numerical difference between a qualitative paper headline and a calculated percentage mean. | Show the Figure 1 headline beside the 1980–1997 mean calculated using the Figure 2 denominator. Reserve a numerical difference for the matched 1975–1997 original-R comparison. See [Abadie and Gardeazabal, pp. 117–118](https://economics.mit.edu/sites/default/files/publications/The%20Economic%20Costs%20of%20Conflict.pdf#page=5). |
+
+The high-level replication checks use source precision or the recorded
+software tolerances. Optimizer checks establish feasibility or detect a
+specific improvement. The nested predictor-weight problem can still have
+multiple solutions.
+
+Among the 48 common-sample rows, only the Basque pysyncon SCM fit changed
+at the precision of the exported estimates. Its pretreatment RMSE fell from
+0.064482 to 0.064345 thousand 1986 US dollars per capita. The number of donor
+weights above the reporting threshold of `1e-6` fell from five to three. The separately
+specified historical Basque SCM still reproduces the published donor weights.
+In one Kansas validation fold, the same five selected 2SISC donors admitted
+a feasible inner-loss decrease of `1.44e-6`, exceeding the solver tolerance
+of `1e-6`. Recovering that solve changed Missouri's weight from 0.645 to
+0.833. The candidate's pooled held-out RMSE fell from 0.0490735 to
+0.0490474 log points, preserving its rank of seventh among eight candidates.
+The four examples retain identical SDID resampling plans at both iteration
+budgets. The source-comparison CSVs preserve numerical precision alongside
+the shorter labels printed on the figures.
+
 ## Errors corrected
 
 | Finding | Why it mattered | Correction and evidence |
@@ -29,7 +66,7 @@ its authors' software and from applying that method to a new dataset.
 
 The independent Basque run uses R Synth 1.1-10 and the authors' documented
 paper Table 3 preparation. Its 1975–1997 mean effect is **−0.6995627076** thousand 1986 US
-dollars. The Python fit gives **−0.6995651251**, with Catalonia/Madrid weights
+dollars. The Python fit gives **−0.6995652172**, with Catalonia/Madrid weights
 **0.850814/0.149186**; the paper reports **0.8508/0.1492**. The numeric fixture
 records its software versions, source hash and reference path. The absolute
 comparison tolerance is `1e-4` for paths, weights and ATT. These software
@@ -43,7 +80,7 @@ Those rows are new applications of their respective methods; the historical
 predictor fit is shown separately. See the executed notebook for the regenerated
 estimates and the [replication guide](replication.md) for matching windows.
 
-Selected changes in the regenerated comparison estimates are shown below.
+Selected changes from the earlier audit are shown below.
 These are average post-treatment effects using each notebook's stated window;
 they are applications of the estimators, not additional published targets.
 
@@ -121,8 +158,12 @@ exact R sampling plan.
 
 ## Validation
 
-The complete provisioned suite passes **413 tests**, including online academic
-references and local original-R integration. Independent SDID reruns match all
+The complete provisioned suite passes **461 tests**, including online academic
+references and local original-R integration. Six warnings record expected
+SDID iteration caps in original-budget tests, and one comes from Matplotlib's
+use of a deprecated pyparsing API. Separately, 154 panel, results, placebo,
+validation, sensitivity and evaluation-plotting tests passed in a second
+environment with NumPy 2.5.4 and SciPy 1.16.2. Independent SDID reruns match all
 inference draws within `2.76e-14`; SCUL screening matches 1,840 direct caret
 column/window decisions. All 16 canonical pysyncon adapter fits pass checked
 termination. Notebook source checks compile every code cell and parse generated

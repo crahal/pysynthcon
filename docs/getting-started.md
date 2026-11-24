@@ -12,14 +12,14 @@ SCUL and ISC use the original R implementations; follow the
 [reference-backend installation guide](reference_backends.md) before fitting them.
 
 ```python
-from pysynth import SCUL, SyntheticDID, compare
+from pysynth import SyntheticControl, SyntheticDID, compare
 from pysynth.datasets import DATASETS, load_dataset
 
 frame = load_dataset("california", cache_dir=".data-cache")
 panel = DATASETS["california"].panel(frame)
 sdid = SyntheticDID().fit(panel)
-lasso = SCUL(initial_window=5, horizon=12).fit(panel)
-print(compare({"SDID": sdid, "SCUL": lasso}))
+scm = SyntheticControl().fit(panel)
+print(compare({"SDID": sdid, "SCM": scm}))
 sdid.plot(effects=True)
 ```
 
