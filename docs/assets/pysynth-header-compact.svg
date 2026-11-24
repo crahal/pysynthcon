@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="570" height="417" viewBox="0 0 570 417" role="img" aria-labelledby="title desc">
+  <title id="title">PySynth · Synthetic control in Python</title>
+  <desc id="desc">California Proposition 99. From 1970 to 2000, observed and synthetic cigarette sales track closely before the 1989 policy. The estimated mean SDID effect in 1989–2000 is −15.6 packs per capita per year.</desc>
+  <!-- Data: synth-inference/synthdid at 70c1ce3eac58e28c30b67435ca377bb48baa9b8a.
+       Paths: SyntheticDID().fit(DATASETS["california"].panel(load_dataset("california"))), observed and level-adjusted counterfactual. -->
+  <defs>
+    <linearGradient id="ink" x2="1" y2=".6" gradientUnits="objectBoundingBox">
+      <stop stop-color="#102E33"/><stop offset=".6" stop-color="#103532"/><stop offset="1" stop-color="#0D282B"/>
+    </linearGradient>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse">
+      <path d="M-1 1L1 -1 M0 6L6 0 M5 7L7 5" stroke="#648D81" opacity=".15" stroke-width=".8"/>
+    </pattern>
+  </defs>
+  <rect width="570" height="417" rx="16" fill="url(#ink)"/>
+<g aria-hidden="true" transform="translate(25 32) scale(0.73)" fill="none"
+      stroke-linecap="round" stroke-linejoin="round" stroke-width="5">
+    <path d="M3 7h10c10 0 11 12 21 12h9c7 0 10-9 18-9h7" stroke="#FCF7E9"/>
+    <path d="M3 19h13c6 0 11 0 18 0h9c8 0 12 13 20 13h5" stroke="#8EE4CE"/>
+    <path d="M3 32h9c10 0 13-13 22-13" stroke="#FFB58B"/>
+    </g>
+<text x="85" y="62" fill="#FCF7E9" font-family="Georgia, 'DejaVu Serif', serif" font-size="50" letter-spacing="-3.6"><tspan font-style="italic">Py</tspan><tspan>Synth</tspan></text>
+<text x="543" y="42" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="400" text-anchor="end" fill="#C2D5D0" >Synthetic control</text>
+<text x="543" y="64" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="400" text-anchor="end" fill="#C2D5D0" >in Python</text>
+<path d="M27.00 84.00L544.00 84.00" stroke="#345753" stroke-width="1" fill="none" />
+<text x="29" y="116" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="650" text-anchor="start" fill="#FCF7E9" >California Proposition 99</text>
+<text x="29" y="143" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" text-anchor="start" fill="#C2D5D0" >Cigarette sales · packs per capita</text>
+<rect x="299.133" y="160" width="137.867" height="132" fill="url(#hatch)"/>
+<path d="M61.00 285.40L437.00 285.40" stroke="#345753" stroke-width="1" fill="none" />
+<text x="50" y="290.4" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" text-anchor="end" fill="#C2D5D0" >40</text>
+<path d="M61.00 232.60L437.00 232.60" stroke="#345753" stroke-width="1" fill="none" />
+<text x="50" y="237.6" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" text-anchor="end" fill="#C2D5D0" >80</text>
+<path d="M61.00 179.80L437.00 179.80" stroke="#345753" stroke-width="1" fill="none" />
+<text x="50" y="184.8" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" text-anchor="end" fill="#C2D5D0" >120</text>
+<path d="M61.00 292.00L437.00 292.00" stroke="#64827D" stroke-width="1.2" fill="none" />
+<path d="M61.00 292.00L61.00 297.00" stroke="#87A69F" stroke-width="1.2" fill="none" />
+<text x="61" y="317" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" text-anchor="middle" fill="#C2D5D0" >1970</text>
+<path d="M186.33 292.00L186.33 297.00" stroke="#87A69F" stroke-width="1.2" fill="none" />
+<text x="186.333" y="317" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" text-anchor="middle" fill="#C2D5D0" >1980</text>
+<path d="M299.13 292.00L299.13 297.00" stroke="#87A69F" stroke-width="1.2" fill="none" />
+<text x="299.133" y="317" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" text-anchor="middle" fill="#FFB58B" >1989</text>
+<path d="M437.00 292.00L437.00 297.00" stroke="#87A69F" stroke-width="1.2" fill="none" />
+<text x="437" y="317" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="400" text-anchor="middle" fill="#C2D5D0" >2000</text>
+<path d="M299.13 162.00L299.13 292.00" stroke="#FFB58B" stroke-width="1.6" fill="none" stroke-dasharray="3 5"/>
+<text x="307.133" y="177" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="400" text-anchor="start" fill="#FFB58B" >Policy starts</text>
+<path d="M299.13,223.04 L311.67,229.79 L324.20,236.09 L336.73,237.99 L349.27,237.95 L361.80,239.59 L374.33,238.80 L386.87,240.72 L399.40,239.62 L411.93,239.09 L424.47,241.65 L437.00,250.97 L437.00,283.29 L424.47,275.90 L411.93,269.16 L399.40,267.18 L386.87,266.26 L374.33,263.75 L361.80,260.85 L349.27,254.51 L336.73,249.10 L324.20,247.52 L311.67,235.50 L299.13,229.43 Z" fill="#8EE4CE" opacity=".14"/>
+<path d="M61.00,184.38 L73.53,180.00 L86.07,173.89 L98.60,174.82 L111.13,173.41 L123.67,173.12 L136.20,167.42 L148.73,170.36 L161.27,172.61 L173.80,177.73 L186.33,179.78 L198.87,180.71 L211.40,184.51 L223.93,190.75 L236.47,201.25 L249.00,203.78 L261.53,208.07 L274.07,209.75 L286.60,217.88 L299.13,223.04 L311.67,229.79 L324.20,236.09 L336.73,237.99 L349.27,237.95 L361.80,239.59 L374.33,238.80 L386.87,240.72 L399.40,239.62 L411.93,239.09 L424.47,241.65 L437.00,250.97" stroke="#8EE4CE" stroke-width="3.5" stroke-dasharray="8 5" stroke-linejoin="round" fill="none"/>
+<path d="M61.00,175.84 L73.53,178.48 L86.07,175.18 L98.60,173.99 L111.13,170.96 L123.67,170.43 L136.20,169.24 L148.73,171.35 L161.27,171.75 L173.80,177.29 L186.33,179.54 L198.87,181.65 L211.40,185.87 L223.93,191.94 L236.47,199.86 L249.00,202.50 L261.53,206.60 L274.07,209.50 L286.60,219.27 L299.13,229.43 L311.67,235.50 L324.20,247.52 L336.73,249.10 L349.27,254.51 L361.80,260.85 L374.33,263.75 L386.87,266.26 L399.40,267.18 L411.93,269.16 L424.47,275.90 L437.00,283.29" stroke="#FCF7E9" stroke-width="3.8" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+<circle cx="437" cy="250.97" r="4" fill="#8EE4CE"/>
+<text x="449" y="256.968" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="600" text-anchor="start" fill="#8EE4CE" >Synthetic</text>
+<circle cx="437" cy="283.29" r="4" fill="#FCF7E9"/>
+<text x="449" y="289.288" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="600" text-anchor="start" fill="#FCF7E9" >Observed</text>
+<path d="M27.00 333.00L544.00 333.00" stroke="#345753" stroke-width="1" fill="none" />
+<text x="26" y="373" font-family="Georgia, 'DejaVu Serif', serif" font-size="37" font-weight="400" text-anchor="start" fill="#FFB58B" >−15.6</text>
+<text x="28" y="399" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="start" fill="#C2D5D0"><tspan fill="#FCF7E9" font-weight="600">packs per capita per year</tspan> · Mean SDID effect, 1989–2000</text>
+</svg>

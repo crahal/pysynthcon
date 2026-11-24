@@ -1,284 +1,103 @@
-# PySynth
+<h1 align="center">
+  <a href="empirical_examples/california.ipynb">
+    <picture>
+      <source media="(max-width: 600px)" srcset="docs/assets/pysynth-header-compact.svg">
+      <img src="docs/assets/pysynth-header.svg" width="100%" alt="PySynth — Synthetic control in Python. After California’s tobacco tax, cigarette sales averaged 15.6 fewer packs per person per year than its synthetic counterfactual, 1989–2000.">
+    </picture>
+  </a>
+</h1>
 
-**Synthetic control methods, comparable results, reproducible academic examples.**
+[![Tests and documentation](https://github.com/crahal/pysynthcon/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/crahal/pysynthcon/actions/workflows/ci.yml)
+[![Python 3.10 and newer](https://img.shields.io/badge/Python-3.10%2B-3776AB)](pyproject.toml)
+[![License GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
+[![Purpose Research](https://img.shields.io/badge/Purpose-Research-yellow.svg)](docs/replication.md)
 
-PySynth provides a common Python interface to classical synthetic control,
-SCUL, individual synthetic control, and synthetic difference-in-differences.
-It builds on [pysyncon](https://github.com/sdfordham/pysyncon) and
-[SyntheticControlMethods](https://pypi.org/project/SyntheticControlMethods/),
-with the original R fitting procedures for SCUL and ISC, and a validated
-Python implementation of the original SDID algorithms.
+**[Quick start](#quick-start) · [Five worked examples](#five-worked-examples) · [Estimators](#estimators) · [Documentation](#documentation)**
 
-Beyond fitting individual estimators, PySynth provides a common workflow for
-pretreatment model validation, donor and donor-group sensitivity, and direct
-comparisons with academic reference results. These tools retain each model's
-full fitting settings and make the specification choices visible. See
-[what PySynth adds](docs/differentiation.md) for its relationship to pysyncon,
-SyntheticControlMethods and other causal-analysis packages.
+PySynth lets you fit several synthetic controls to the same panel and see how the estimated effect changes with the method or donor pool. Compare held-out pretreatment predictions, refit after excluding donors, and put published benchmarks beside the estimates that reproduce them. The library builds on [pysyncon](https://github.com/sdfordham/pysyncon) and [SyntheticControlMethods](https://pypi.org/project/SyntheticControlMethods/).
 
-This is a research-oriented **0.1.0** release. It supports balanced panels,
-explicit donor pools, one treatment onset per panel, and case-specific panels
-for individual synthetic control. Effects are always observed minus estimated
-untreated outcomes. There is no automatic causal interpretation of a good fit.
+## Quick start
 
-## Install
-
-Python 3.10 or newer. Install this repository; the distribution name is
-`pysynth-control` and the import name is `pysynth`. Do not install the unrelated
-`pysynth` project from PyPI.
+Install from source with Python 3.10 or newer. The distribution is `pysynth-control` and the Python import is `pysynth`.
 
 ```bash
 git clone https://github.com/crahal/pysynthcon.git
 cd pysynthcon
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-python -m pip install -e '.[backends,notebooks]'
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -e ".[plot]"
 ```
 
-For the tested academic replication environment, use Python 3.11 or 3.12:
-
-```bash
-python -m pip install -r requirements-replication.txt
-python -m pip install -e '.[docs,dev]'
-```
-
-SCUL and ISC require a **separately supplied local reference bundle**, R, and
-the pinned reference packages. R source, setup utilities, and generated exports
-are excluded from this repository and distributions. A fresh clone alone cannot
-run these two reference backends or re-execute all empirical notebooks. Follow
-the [local reference setup guide](docs/reference_backends.md) to provision them.
-SCM, DID and SDID estimation and inference remain available in Python; the
-California paper's exact R-generated sampling plan also needs the local bundle.
-The `backends` extra pins pysyncon replication fixes.
-
-## A complete example
+California introduced its tobacco-control program in 1989. Use the same states and years to fit outcome-matching synthetic control (SCM) and synthetic difference-in-differences (SDID).
 
 ```python
-from pysynth import (
-    SyntheticControl, TwoStageIndividualSC, SyntheticDID, compare,
-)
+from pysynth import SyntheticControl, SyntheticDID, compare, plot_effects, save_figure
 from pysynth.datasets import DATASETS, load_dataset
 
-data = load_dataset("california")  # requests download; pinned URL + SHA256
-panel = DATASETS["california"].panel(data)
+panel = DATASETS["california"].panel(load_dataset("california"))
+fits = {"SCM": SyntheticControl().fit(panel), "SDID": SyntheticDID().fit(panel)}
 
-models = {
-    "SCM": SyntheticControl(),
-    "2SISC": TwoStageIndividualSC(n_neighbors=10),
-    "SDID": SyntheticDID(),
-}
-fits = {name: model.fit(panel) for name, model in models.items()}
-print(compare(fits))
-print(fits["SDID"].att)  # approximately -15.60382787 packs per capita
-fits["SDID"].plot()
-```
-
-With the local R bundle installed, include the original SCUL and ISC fits in
-the same comparison.
-
-```python
-from pysynth import SCUL, IndividualSC
-
-fits["SCUL"] = SCUL(initial_window=5, horizon=12).fit(panel)
-fits["ISC"] = IndividualSC().fit(panel)
-print(compare(fits))
-```
-
-SDID's reference stopping rule reaches its iteration cap for one California
-weight fit; the warning and solver diagnostics remain visible. The resulting
-estimate and weights match the pinned R reference implementation.
-
-With your own long-form data:
-
-```python
-from pysynth import Panel, SyntheticDID
-
-panel = Panel.from_frame(
-    df, unit="country", time="year", outcome="gdp",
-    treated_unit="West Germany", treatment_time=1990,
-    controls=["USA", "UK", "Austria", "France"],
-)
-result = SyntheticDID().fit(panel)
-result.att                   # average post-treatment effect
-result.weights               # labelled donor weights
-result.time_weights          # SDID pre-period weights
-result.to_frame()            # observed, counterfactual, effect, post
-```
-
-`treatment_time` is the **first affected observed period**. Duplicate rows,
-missing outcomes, unbalanced selected panels, and invalid timing raise errors.
-For simultaneous treatment, pass `treated_units=[...]` to `Panel.from_frame`.
-For individual-specific timing, build one eligible panel per case and use
-`IndividualSC.fit_many` or `TwoStageIndividualSC.fit_many` ([guide](docs/data.md)).
-
-## Available methods
-
-| Interface | Method | Notes |
-|---|---|---|
-| `SyntheticControl()` | Convex outcome-matching SCM | Equal importance for every pre-period; optional ridge penalty |
-| `SCUL()` | Synthetic Control Using Lasso | Rolling-origin selection; signed weights and intercept |
-| `IndividualSC()` | Individual Synthetic Control (ISC) | Full eligible donor pool; donor resampling and event-time aggregation |
-| `TwoStageIndividualSC(n_neighbors=10)` | Two-Stage Individual Synthetic Control (2SISC) | Nearest-neighbor screening and the authors' mean-predictor SCM fit |
-| `SyntheticDID()` | Synthetic difference-in-differences | Native R-reference algorithm; simultaneous treated blocks |
-| `DifferenceInDifferences()` | DID comparison | Uniform unit and time weights |
-| `PySyncon("synth")` | Classical predictor-based SCM | Optional `pysyncon.Dataprep` for published specifications |
-| `PySyncon("augsynth")` | Augmented SCM | Ridge augmentation and upstream cross-validation |
-| `PySyncon("pensynth")` | Penalized SCM | Explicit penalty in `options` |
-| `PySyncon("robust")` | Robust SCM | Explicit rank/threshold and ridge in `options` |
-| `SCM("synth")` | SyntheticControlMethods SCM | All pre-lags; ten starts; checked solver recovery |
-| `SCM("diffsynth")` | Differenced SCM | Local pandas compatibility fix and level correction |
-
-See [method definitions](docs/methods.md) and [backend details](docs/backends.md).
-Vanilla ISC uses every eligible donor in each individual's panel. 2SISC first
-selects up to `n_neighbors` donors using pretreatment Euclidean distance, then
-fits the synthetic-control weights within that group. ISC uses MSCMT and 50
-donor resamples; 2SISC follows the authors' pysyncon mean-predictor specification
-without donor resampling. Both support event-time aggregation. The two-stage
-approach is credited to
-[Petrillo et al. (2025)](https://eprints.whiterose.ac.uk/id/eprint/224118/1/Binder2025004.pdf);
-the method guide documents the donor-count convention and remaining study
-replication limits. The earlier 2SISC variant remains available through
-`backend="mscmt", n_bootstrap=50`. To migrate the initial API,
-replace `IndividualSC(n_neighbors=k)` with `TwoStageIndividualSC(n_neighbors=k)`.
-The [individual-method guide](docs/methods.md#individual-synthetic-control-isc)
-describes the reference algorithms and the survey-specific choices needed
-for a study replication.
-
-## Select and stress-test a specification
-
-Compare candidates on common held-out pretreatment periods, then refit the
-selected candidate using the complete panel. Candidate factories create fresh
-models for each fit. This example runs entirely in Python:
-
-```python
-from pysynth import SyntheticControl, SyntheticDID, select_estimator, donor_sensitivity
-
-estimators = {"SCM": SyntheticControl, "SDID": SyntheticDID}
-selection = select_estimator(panel, estimators, initial_window=12, horizon=4)
-print(selection.validation.summary)
-print(selection.selected_name, selection.estimate.att)
-
-sensitivity = donor_sensitivity(panel, estimators)  # full donor-deletion refits
-print(sensitivity.summary)
-```
-
-Actual post-treatment observations are excluded from selection, and held-out
-treated outcomes are masked before fitting. Named donor-group exclusions are
-also supported. Lower prediction error and stable donor sensitivity are useful
-diagnostics; they do not establish causal validity. See the
-[comparison workflows](docs/differentiation.md) for 2SISC neighbor tuning,
-interpretation and related software.
-
-## Empirical notebooks
-
-Each notebook downloads data with `requests`, checks the source hash, runs a
-reference specification with numerical assertions, and compares **all twelve**
-applicable interfaces on a common outcome panel.
-
-| Notebook | Academic setting | Reference check |
-|---|---|---|
-| [California](empirical_examples/california.ipynb) | Tobacco control, ADH (2010); SDID (2021) | R SDID ATT −15.60382787 |
-| [Basque Country](empirical_examples/basque.ipynb) | Abadie & Gardeazabal (2003) | Catalonia/Madrid weights and 1975–1997 reference ATT |
-| [Germany](empirical_examples/germany.ipynb) | ADH (2015) | Historical two-stage specification and reference ATT |
-| [Kansas](empirical_examples/kansas.ipynb) | Ben-Michael et al. (2021) | Authors' Ridge ASCM vignette ATT −0.0401 |
-
-```bash
-python scripts/execute_notebooks.py --examples basque california germany kansas
-```
-
-These notebooks distinguish published specifications, upstream numerical
-references, and new applications. They do **not** claim to reproduce SCUL's
-original scanner-data study or the ISC/costofcare survey study. The [replication
-guide](docs/replication.md) states exact benchmarks, tolerances and limitations.
-
-Full fitting can still be quick on these small aggregate panels. With only
-the outcome as one predictor group, MSCMT itself has no nontrivial predictor-
-weight search; fitting many individuals with additional covariates is more
-costly. The notebooks report elapsed times and full fitting settings so the
-computational work is inspectable.
-
-## Simulation notebook
-
-[Donor spillovers](simulated_examples/donor_spillovers.ipynb) asks whether a
-good pretreatment fit protects an estimate when nearby comparison regions are
-also affected by a policy. The simulation generates paired regional panels
-with a known treatment effect. Each pair shares the same underlying outcomes.
-Only the nearby donors' post-treatment outcomes change. The notebook compares
-pretreatment validation scores with actual estimation errors, then uses named
-donor-group exclusions to refit SCM and DID. It runs 200 replications in Python
-and writes both the draw-level estimates (`paired-estimates.csv`) and the
-averages with Monte Carlo standard errors (`monte-carlo-summary.csv`).
-
-```bash
-python -m pip install -e '.[notebooks]'
-python scripts/execute_notebooks.py --examples donor_spillovers
-```
-
-Run `python scripts/execute_notebooks.py` for all five notebooks. Empirical
-inputs download into memory on each run, and the simulation generates its
-inputs from a recorded random seed. Local figures, result tables, and numerical
-diagnostics go under `outputs/empirical_examples/<study>/` and
-`outputs/simulated_examples/donor_spillovers/`. The notebooks embed their
-figures for reading on GitHub.
-
-## Publication figures
-
-Compare fitted estimators with shared-scale effect panels and an aligned
-ATT/pretreatment-fit summary. The library supplies readable typography,
-explicit treatment timing and outcome units; all figures remain editable
-Matplotlib objects.
-
-```python
-from pysynth import plot_comparison, plot_effects, save_figure
-
-fig, axes = plot_comparison(fits, units="packs per capita")
-save_figure(fig, "outputs/custom/california-comparison")
-
-fig, axes = plot_effects(fits, ylabel="Effect on cigarette sales (packs per capita)")
+print(compare(fits)[["att", "pre_rmse"]])
+fig, axes = plot_effects(fits, ylabel="Effect on sales (packs per capita)", xlabel="Year")
 save_figure(fig, "outputs/custom/california-effects")
 ```
 
-See the embedded figures in the [California notebook](empirical_examples/california.ipynb).
-Each empirical notebook displays three reference/comparison figures with **source /
-reproduction / difference** annotations directly beside the matching curves,
-panels and ATT rows. Separate historical fits receive their own reference row
-or panel. Two further figures label pretreatment validation and donor-exclusion
-sensitivity results directly. Expandable notes retain full specifications
-and audit tables. Local export paths follow each figure. Use
-`reference_style="strip"` for the earlier source-strip layout.
-Rerunning a notebook
-creates local PDF, SVG and PNG exports, CSVs of source comparisons and estimates,
-and fitting diagnostics. Generated files stay outside version control.
-Each empirical notebook also runs the original SDID placebo variance procedure with 200
-resamples, then repeats that exact plan with a larger iteration budget and
-requires every resampled weight fit to meet the original stopping rule.
-Both standard errors and convergence counts are shown; exact published-reference
-assertions retain the original cap. See [inference convergence](docs/inference.md#handling-iteration-limit-warnings)
-for the explicit budget override and strict check.
-The [plotting guide](docs/plotting.md) explains local regeneration.
-Dots are point estimates, without confidence intervals; shaded time regions
-identify the post-period.
+The SDID estimate is **−15.60 packs per capita per year**, averaged over 1989–2000. Effects are observed outcomes minus estimated untreated outcomes. The reference fit reports an iteration-limit warning for one set of weights and reproduces the original R estimate. [California notebook](empirical_examples/california.ipynb) · [SDID convergence and inference](docs/inference.md#handling-iteration-limit-warnings)
 
-## Documentation and development
+For your own data, `Panel.from_frame` takes unit, time and outcome columns, an explicit treatment date and an optional donor list. The treatment date is the first affected observation. Panels are balanced and use a common onset within each panel. ISC and 2SISC also accept case-specific panels and aggregate in event time. [Prepare a panel](docs/data.md)
 
-- [User guide and data preparation](docs/data.md)
-- [What PySynth adds and related software](docs/differentiation.md)
-- [Pretreatment validation, selection and donor sensitivity](docs/evaluation.md)
-- [Estimator equations and assumptions](docs/methods.md)
-- [Placebo diagnostics and inference](docs/inference.md)
-- [Publication plotting and export](docs/plotting.md)
-- [Backend compatibility](docs/backends.md)
-- [Replication provenance](docs/replication.md)
-- [Estimator audit, corrections and remaining limits](docs/audit.md)
-- [API reference source](docs/api.rst)
-- [Contributor guide](CONTRIBUTING.md), [changelog](CHANGELOG.md), [citations](docs/references.md)
+## Five worked examples
+
+| Open the notebook | What to look for |
+| --- | --- |
+| [California · tobacco control](empirical_examples/california.ipynb) | Reproduce the published SDID effect of −15.6 packs per capita and its placebo standard error of 8.4. |
+| [Basque Country · conflict](empirical_examples/basque.ipynb) | Recover the published SCM donor weights for Catalonia (0.8508) and Madrid (0.1492), and compare the GDP path with the original R fit. |
+| [West Germany · reunification](empirical_examples/germany.ipynb) | Rebuild the historical predictor specification and compare the GDP gap with the paper’s roughly US$1,600 annual loss per person (1990–2003, PPP-adjusted). |
+| [Kansas · tax cuts](empirical_examples/kansas.ipynb) | Match the authors’ ridge-augmented SCM vignette at −0.0401 log points and check all 16 quarterly effects. |
+| [Simulation · donor spillovers](simulated_examples/donor_spillovers.ipynb) | Across 200 economies with a known +6-point effect, spillovers shift full-pool SCM by −2.78 points on average while its pretreatment fit stays identical. |
+
+The four empirical notebooks check the historical specification, then compare twelve estimator interfaces on a common panel. Each downloads hash-verified data into memory. The simulation generates its own data and runs entirely in Python. Figures are embedded in the notebooks. Executing them also writes PDF, SVG, PNG and numerical tables under `outputs/empirical_examples/<study>/` or `outputs/simulated_examples/donor_spillovers/`. [Reference targets and tolerances](docs/replication.md) · [Figure exports](docs/plotting.md)
 
 ```bash
-python -m pytest                         # offline tests
-python -m pytest -m network              # academic reference checks; internet required
-python -m sphinx -W --keep-going -b html docs docs/_build/html
-python -m build
+python -m pip install -e ".[notebooks]"
+python scripts/execute_notebooks.py --examples donor_spillovers
 ```
 
-Open `docs/_build/html/index.html` for the full navigable documentation.
-Licensed under [GPL-3.0](LICENSE); see [third-party notices](THIRD_PARTY_NOTICES.md).
+For all five notebooks, use Python 3.11 or 3.12, install the [pinned replication requirements](requirements-replication.txt) and provision the separately supplied local R reference bundle. SCUL and vanilla ISC use the original R backends. Reproducing the California paper’s exact placebo sampling plan also uses the bundle. Once provisioned, `python scripts/execute_notebooks.py` runs all five. [Local R setup](docs/reference_backends.md)
+
+## Estimators
+
+| Family | Python interface | Specification |
+| --- | --- | --- |
+| Outcome SCM | `SyntheticControl()` | Convex donor weights matching pretreatment outcomes, with optional ridge regularization. |
+| SCUL | `SCUL()` | Lasso with rolling-origin tuning, signed weights and an intercept. |
+| Individual synthetic control | `IndividualSC()` | Vanilla ISC fits each individual against the full eligible pool using MSCMT and 50 donor resamples by default. |
+| Two-stage individual synthetic control | `TwoStageIndividualSC(n_neighbors=10)` | 2SISC screens nearest neighbors on pretreatment features, then fits the authors’ mean-predictor SCM in that group. |
+| SDID and DID | `SyntheticDID()`, `DifferenceInDifferences()` | Native Python fits for simultaneous treatment. SDID supports bootstrap, jackknife and placebo inference. |
+| pysyncon | `PySyncon("synth")` | Predictor-based SCM. Select `"augsynth"`, `"pensynth"` or `"robust"` for the augmented, penalized or robust fit. |
+| SyntheticControlMethods | `SCM("synth")`, `SCM("diffsynth")` | Classical and differenced SCM with all pre-outcome lags, ten starts and checked optimizer recovery. |
+
+Install `python -m pip install -e ".[backends]"` for the two adapter families and the default 2SISC fit. The two-stage specification follows Petrillo et al. (2025). [Method definitions and attribution](docs/methods.md) · [Backend details](docs/backends.md)
+
+## Compare specifications
+
+`select_estimator` scores each candidate on the same withheld pretreatment periods and refits the selected candidate on the full panel. `donor_sensitivity` refits after each donor exclusion. Pass named groups to examine a possible spillover region, as in the simulation.
+
+```python
+from pysynth import donor_sensitivity, select_estimator
+
+candidates = {"SCM": SyntheticControl, "SDID": SyntheticDID}
+selection = select_estimator(panel, candidates, initial_window=12, horizon=4)
+print(selection.validation.summary)
+print(donor_sensitivity(panel, candidates).summary)
+```
+
+`plot_comparison` aligns ATT estimates with pretreatment RMSE, and `plot_effects` preserves a common outcome scale across methods. Both return editable Matplotlib figures. [Evaluation guide](docs/evaluation.md) · [Plotting guide](docs/plotting.md)
+
+## Documentation
+
+- [Getting started](docs/getting-started.md) · [Data preparation](docs/data.md) · [API reference](docs/api.rst)
+- [Research workflows](docs/differentiation.md) · [Inference](docs/inference.md) · [Estimator and replication audit](docs/audit.md)
+- [Contributing and running tests](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+When publishing, cite PySynth together with the method papers and upstream packages used in your analysis. [Software citation](CITATION.cff) · [Method references](docs/references.md)
