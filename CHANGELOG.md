@@ -5,6 +5,14 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Inference and numerical audit
+
+- Add sharp-path conformal tests for outcome-matching SCM and pointwise inversion over a supplied effect grid. Return every rotation and score, null-imposed weights and residuals. Plot accepted grid candidates with optional independently sourced endpoints.
+- Reproduce four Rhode Island p-values and six annual pointwise sets in a new empirical notebook. The existing paired spillover simulation now tests the known effect path under clean and exposed donor pools.
+- Add full in-space treatment reassignment, panel-specific estimator factories, optional parallel refits, squared-error screens, and placebo gap plots. The California notebook uses the original smoking covariates and all 39 assignments in both the local R Synth package and the checked Python predictor optimizer. The untreated-only pool remains the default.
+- Correct false convergence in outcome SCM when a remote donor sets the numerical scale. Record any improving donor transfers and enforce the iteration budget. Require a boolean for the historical post-treatment predictor override.
+- Read the Stata tobacco predictors and the Rhode Island supplement directly from checksum-verified response bytes.
+
 ### Estimator attribution
 
 - Give predictor-based, ridge-augmented, penalized and robust SCM their own

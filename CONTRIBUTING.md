@@ -66,17 +66,18 @@ python -m sphinx -W --keep-going -b html docs docs/_build/html
 python -m build
 ```
 
-`scripts/create_notebooks.py` regenerates the four empirical notebook sources
-and clears their embedded outputs. The simulation source lives directly in
+`scripts/create_notebooks.py` regenerates the four empirical estimator comparisons
+and clears their embedded outputs. Edit the study-specific inference example in
+`empirical_examples/rhode_island.ipynb` and the simulation in
 `simulated_examples/donor_spillovers.ipynb`. Run `scripts/execute_notebooks.py`
-with the active Python interpreter to execute all five, or use
+with the active Python interpreter to execute all six, or use
 `--examples donor_spillovers` for the simulation alone. Use `--output-dir` to
 write executed notebook copies to another directory. Standalone result exports
 always go under the checkout's `outputs/`. Keep one notebook per study. Download
 empirical inputs into memory and generate simulation inputs from a recorded
 seed. Network-dependent tests carry the `network` marker.
 
-Figure changes belong in `pysynth.plotting` or `pysynth.evaluation_plotting`,
+Figure changes belong in the relevant plotting module,
 with notebooks calling the public API. Preserve observed-minus-counterfactual
 signs, actual calendar spacing, common comparison windows and explicit units.
 Do not infer uncertainty from

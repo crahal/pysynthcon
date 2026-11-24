@@ -54,6 +54,13 @@ Inference
 .. automodule:: pysynth.inference
    :members:
 
+.. automodule:: pysynth.conformal
+   :members: ConformalResult, conformal_test, conformal_confidence_set
+
+.. autofunction:: pysynth.placebo_plotting.plot_placebo_gaps
+
+.. autofunction:: pysynth.conformal_plotting.plot_conformal_set
+
 Validation, selection and sensitivity
 ----------------------------------------
 

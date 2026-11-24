@@ -7,11 +7,19 @@ its authors' software and from applying that method to a new dataset.
 
 ## Current method catalog
 
-Each empirical example compares eleven specifications. Predictor-based SCM
+The Basque, California, Germany and Kansas estimator comparisons each include eleven specifications. Predictor-based SCM
 uses means over three pretreatment blocks. Ridge-augmented SCM, penalized SCM,
 robust SCM and differenced SCM have separate interfaces and paper citations.
 The comparison counts and backend-specific changes recorded in the dated
 audits below describe the earlier notebook lineup. [Methods](methods.md)
+
+## Re-audit of fits and inference designs
+
+- **A distant donor could hide an incorrect solution.** A treated series with pretreatment values `[0.9, 0]` can be matched exactly by weights 0.1 and 0.9 on donors with histories `[0, 0]` and `[1, 0]`. Adding an unused donor with history `[0, 1000]` caused the scaled solver to stop near equal weights. For post-treatment donor outcomes 0, 20 and 0 and a treated outcome of 18, that produced a spurious effect of +8. The solver now checks whether a feasible transfer between donors materially improves the original objective on the scale of the fitted donors. The exact match recovers an effect of zero. Transfers share the original iteration budget and appear in the diagnostics.
+- **A text configuration could enable look-ahead.** `allow_post_predictors="False"` previously evaluated as true. Predictor adapters now require a boolean for this switch. Germany’s documented historical exception uses the explicit boolean `True`.
+- **Downstream estimates were checked.** The four full-sample outcome-SCM ATTs stayed the same. Excluding Austria increased the revised West Germany ATT by $3.24 per person relative to the previous leave-Austria-out fit. The largest change to an individual simulated ATT was 0.000020 points across the original 800 paired-design rows. Kansas pooled SCM validation RMSE moved from 0.026644 to 0.026633 log points.
+- **An exact interpolation should give a tied conformal rank.** In a deterministic panel a convex blend fits the entire null-adjusted series exactly. Floating-point residuals alone produced a p-value of 1/60. The implementation checks interpolation at row-specific numerical precision and verifies feasibility for near-perfect fits. The regression example now gives a p-value of 1 under rescaling and common level shifts.
+- **Two kinds of placebo require different evidence.** The tobacco paper assigns each state the intervention with every other state available as a donor. Our original helper always excluded the real treated state from the placebo donor pools. Both designs now have explicit names. In the source predictor and state order, R Synth and the Python optimizer both rank California first of 39, but retain 27 and 26 placebo states at the 5× cutoff. Figure 6 reports 29. The complete bridge run also agrees with an independent native R data preparation and fit for every assigned state. The time-permutation analysis separately checks the Rhode Island paper’s four SCM p-values and its authors’ software-generated endpoints. [Replications and sources](replication.md)
 
 ## November 24 follow-up audit
 

@@ -126,3 +126,20 @@ Tests requiring the local bundle are marked `r_reference` and report an
 explicit skip when it is absent. GitHub CI runs the independent numerical
 fixtures in Python; the original-R integration checks run in a provisioned
 local environment.
+
+## R Synth for the California reassignment study
+
+The tobacco notebook calls `Synth::synth` on the seven predictor rows and the 19 pretreatment years for each assigned state. The optional Python bridge embeds R in a fresh process for each fit. Install a working R toolchain, its development headers, and the Python backends before installing the bridge. The reference checks use R Synth 1.1-10 and rpy2 3.6.9.
+
+```bash
+python -m pip install -e '.[backends,r-synth]'
+```
+
+Install Synth and its dependencies through your R package manager. If CRAN provides a different release, install the [archived version](https://cran.r-project.org/src/contrib/Archive/Synth/) into your local R library. The notebook’s benchmark environment uses 1.1-10. The local library directory can be selected with `PYSYNTH_R_LIBRARY`. The worker Python and R must be binary-compatible on the host. Normally the bridge uses the project’s Python. If the analysis environment and system R use different compiled libraries, provision a separate worker virtual environment with a compatible interpreter. From the checkout root on Unix:
+
+```bash
+/usr/bin/python3 -m venv .local/reference/python
+.local/reference/python/bin/python -m pip install numpy "rpy2==3.6.9"
+```
+
+PySynthCon detects this local environment when present. On Windows the executable is `.local/reference/python/Scripts/python.exe`. To select an interpreter elsewhere, set `PYSYNTH_R_PYTHON` to its executable path. With a separate worker, only that environment needs rpy2. The analysis environment still needs the Python predictor backend for data preparation. The bridge returns the fitted version with the weights and optimization losses. The published data download, predictor construction and all output files are handled in Python. The state reassignment API also accepts ordinary Python estimators. [R package](https://cran.r-project.org/package=Synth) · [Methods and numerical checks](replication.md#proposition-99-and-the-in-space-reassignment-study)

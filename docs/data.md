@@ -91,8 +91,8 @@ adaptation is not the default original ISC procedure. Install the
 
 ## Academic downloads
 
-`load_dataset("california" | "basque" | "germany" | "kansas")` uses requests,
-an immutable source commit, explicit HTTP timeout, status checking, and
+`load_dataset(name)` uses requests,
+a versioned academic archive or immutable source commit, explicit HTTP timeout, status checking, and
 SHA256 verification. By default the download stays in memory. All empirical
 notebooks use in-memory downloads, and the simulation generates its panel in
 memory on each run. Library callers can explicitly request a disk cache with
@@ -104,3 +104,13 @@ The Basque dataset also contains Spain’s national aggregate. `Dataset.panel`
 excludes it: the original paper’s donor pool consists of the other 16 regions,
 and the aggregate contains the treated Basque Country. The source download is
 retained unchanged.
+
+
+| Dataset key | Source contents and study use |
+| --- | --- |
+| `california` | Outcome-only state panel from the SDID authors. Used for their published point estimate and resampling plan. |
+| `california_tobacco` | State cigarette sales and original tobacco-study predictors in Stata format. Used for the 39 in-space reassignments. |
+| `basque`, `germany`, `kansas` | Study-specific predictors and outcomes used in the three estimator comparisons. |
+| `rhode_island` | The journal supplement’s tab-delimited log female gonorrhea incidence matrix. Its 25 annual observations are reshaped into unit, year and log rate. The remaining 50 source unit IDs are preserved. |
+
+Stata and ZIP inputs are read from memory. Only the outcome member of the Rhode Island archive is opened. [Smoking data](https://github.com/j-hai/synth-stata/blob/ae99fd1ed100e8f5ea38386f18f02e61a90956e6/s/smoking.dta) · [Rhode Island supplement](https://doi.org/10.6084/m9.figshare.14473870.v1)

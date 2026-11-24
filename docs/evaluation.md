@@ -173,7 +173,7 @@ not cache fitted estimators, subsample donors, truncate optimizations, or
 suppress estimator warnings. Tables can be exported with `to_csv`; generated
 outputs remain local-only under the repository's existing ignore rules.
 
-All four empirical notebooks demonstrate temporal validation and complete
+The four empirical estimator comparisons demonstrate temporal validation and complete
 single-donor exclusions. They are new analyses of the canonical datasets,
 separate from their published-reference replications.
 

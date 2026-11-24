@@ -158,47 +158,65 @@ with `max_iter=1_000_000` and `require_convergence=True`, while retaining the
 original result for the exact reference assertion. Do not replace the
 reference target or widen its tolerance to accommodate the extended run.
 
-## Generic in-space placebo diagnostic
+## In-space placebo paths and ranks
+
+For a study with one treated unit, `placebo_test` repeats the fit with every unit assigned to treatment in turn. Use `donor_pool="reassign"` for the California design of Abadie, Diamond and Hainmueller. Each fit uses the same number of donors, including California when another state receives the hypothetical assignment. The default `"untreated"` design excludes the originally treated unit from all placebo donor pools. It is useful when its observed post-treatment outcomes would contaminate those counterfactual paths. [California study, Figures 4–8](https://economics.mit.edu/sites/default/files/publications/Synthetic%20Control%20Methods.pdf#page=9)
 
 ```python
-from pysynth import SyntheticControl, placebo_test
+from functools import partial
+from pysynth import placebo_test, plot_placebo_gaps
+from pysynth.datasets import DATASETS, load_dataset
+from pysynth.replication import california_tobacco_estimator
 
-diagnostic = placebo_test(SyntheticControl(), panel, max_pre_rmse_ratio=5)
-print(diagnostic.p_value)
-print(diagnostic.table)
+data = load_dataset("california_tobacco")
+panel = DATASETS["california_tobacco"].panel(data)
+states = placebo_test(partial(california_tobacco_estimator, data, backend="r-synth"), panel,
+                      donor_pool="reassign", n_jobs=4)
+print(states.rank, len(states.table))
+screened = states.with_pre_mspe_cutoff(5)
+fig, ax = plot_placebo_gaps(screened, xlabel="Year", ylabel="Gap in packs per person")
 ```
 
-Each original donor becomes pseudo-treated in turn. The actually treated
-unit is excluded from every placebo donor pool, as is the pseudo-treated
-unit itself. The estimator is refitted and any failure is raised. The same
-treatment time is used. Models with a fixed custom Dataprep are not suitable
-for this generic helper; use a method that can fit each new Panel.
+The above example requires the optional local R Synth bridge. Choose `backend="python"` to run the checked Python predictor optimizer. [Setup](reference_backends.md#r-synth-for-the-california-reassignment-study)
 
-The statistic is post-RMSPE divided by pre-RMSPE. The optional cutoff excludes
-placebos whose pre-RMSE exceeds the given multiple of the treated pre-RMSE.
-The treated fit is always retained. With $B$ eligible placebo statistics,
-the reported rank is
+An estimator instance is copied for each assignment. A factory that accepts the reassigned panel can rebuild its predictor specification for each hypothetical treated unit. Each assignment gets a complete fit. The default `n_jobs=1` runs serially. Increasing it distributes independent fits across processes and requires serializable estimators and results. Assignment order is preserved.
 
-$$p=\frac{1+\#\{\text{placebo statistic}\geq\text{treated statistic}\}}{1+B}.$$
+The rank counts eligible assignments with a post/pre MSPE ratio at least as large as the treated unit’s, including the treated unit and all ties. Divide by the number of eligible assignments to obtain `p_value`. Squaring the RMSPE ratio preserves its ordering. `table` exposes both scales. Zero pretreatment error gives an infinite ratio for nonzero post-treatment error and zero when both errors are zero. A zero cutoff denominator in a relative screen admits only other perfect pretreatment fits.
 
-Ties count in the tail. A zero pre-gap with a nonzero post-gap gives an
-infinite statistic; both gaps exactly zero gives zero. No fixed cutoff in
-outcome units is used, so changing the measurement scale does not change
-the diagnostic. RMSPE is calculated with scaled residuals to avoid underflow
-or overflow when squaring. Inspect the table when fit is effectively
-perfect or when no placebo passes the cutoff (then the rank is one).
+The California paper screens using mean **squared** gaps. `max_pre_mspe_ratio=5` allows five times the treated pre-MSPE. The older `max_pre_rmse_ratio=5` permits up to twenty-five times that MSPE. Choose one scale. `with_pre_mspe_cutoff(None)` restores every assignment. Changing the screen reuses the stored fits, and `gaps` always includes every unit.
 
-The actual treated fit has $N$ donors, whereas each placebo fit has $N-1$
-because the actual treated unit is excluded. Thus the fitting procedure is
-not symmetric across assignments: exchangeability alone does not make this
-rank an exact randomization p-value. Treat it as an in-space diagnostic and
-assess donor eligibility and the research design separately. The cutoff changes the reference set and should be chosen transparently.
+An unfiltered reassignment rank has a randomization interpretation under a sharp null, uniform assignment among the eligible units and an assignment-symmetric fitting rule. In observational studies the assignment mechanism needs substantive justification. A treated-relative screen changes the comparison set and returns a descriptive rank. The default untreated-only scheme also gives the treated and placebo fits different pool sizes. SDID’s placebo *variance* estimator, described above, samples its original controls to estimate a standard error.
 
-This generic placebo diagnostic is distinct from the SDID placebo variance
-estimator above. Conformal inference as a common API, time-block resampling and
-survey-design variance are not implemented. Selected backend methods expose
-additional procedures on their native fitted object; consult their assumptions
-and documentation.
+## Conformal inference over time
+
+Chernozhukov, Wüthrich and Zhu test a **sharp path** for a single treated unit. Specify an effect for every post-treatment date. A scalar repeats the same hypothesis at each date. A vector or a date-indexed Series can describe a delayed or changing effect. The implementation uses their outcome-only, simplex-constrained synthetic control with no intercept. [Method and validity conditions](https://doi.org/10.1080/01621459.2021.1920957) · [Authors’ implementation](https://github.com/kwuthrich/scinference/blob/567c6889ce0a1d269a62d415b88aa6baf723a3fe/R/conformal.R)
+
+```python
+import numpy as np
+from pysynth import conformal_confidence_set, conformal_test, plot_conformal_set
+from pysynth.datasets import DATASETS, load_dataset
+
+ri = DATASETS["rhode_island"].panel(load_dataset("rhode_island"))
+joint = conformal_test(ri, null_effect=0)
+print(joint.p_value, joint.rotations)  # Includes the identity shift
+
+grid = conformal_confidence_set(ri, np.arange(-500, 201) / 100, alpha=0.10)
+fig, ax = plot_conformal_set(grid)
+```
+
+1. Subtract the proposed effect path from the observed post-treatment outcomes. Estimate donor weights by least squares across **all** dates, with the null imposed. A conventional pretreatment estimate cannot supply these weights.
+2. Form the observed score from the absolute residuals over the post-treatment window. By default the score is their sum. The API also accepts an L-q norm for `q >= 1`, including the maximum for `q=np.inf`. The authors’ replication code reports the unnormalised score. A common scale factor leaves the ranks unchanged.
+3. Move the window through all cyclic shifts of the observed calendar, wrapping at the end. The fraction with score at least as large as the observed score is the p-value. `rotations` records each window, score and tail indicator. The result also retains the null-adjusted residuals and fitted weights.
+
+With 25 dates the smallest joint p-value is 1/25. Invariance of the null residual distribution under the shifts gives finite-sample validity. With serial dependence the paper establishes approximate validity under additional conditions on dependence and counterfactual estimation. Enumerating all shifts removes simulation noise from the rank. It does not establish those conditions for a particular application.
+
+### Inverting a test at a single date
+
+For each post-treatment date, combine that date alone with the complete pretreatment history. For each supplied candidate effect, impose the candidate, refit SCM and keep it when its p-value exceeds `alpha`. The result records every tested candidate, including rejected values. Different dates can have disconnected or empty accepted sets. Acceptance at a grid boundary leaves the extent beyond that boundary unresolved. A finer or wider grid requires further fits. These are pointwise sets with no guarantee of simultaneous coverage across the post-period.
+
+Rhode Island’s authors used 701 candidates from −5.00 to 2.00 log points for each of six years. Each single-date test uses 20 possible positions, giving p-values in steps of 0.05. The joint test uses all six years together and answers a different question. [Study, Figure 5 and Tables 1–2](https://arxiv.org/pdf/1712.09089#page=39) · [Replication materials](https://doi.org/10.6084/m9.figshare.14473870.v1)
+
+## Donor resampling for individual controls
 
 `IndividualSC(n_bootstrap=..., random_state=...)` and
 `TwoStageIndividualSC(backend="mscmt", n_neighbors=..., n_bootstrap=..., random_state=...)`

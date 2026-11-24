@@ -12,7 +12,7 @@
 [![License GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
 [![Purpose Research](https://img.shields.io/badge/Purpose-Research-yellow.svg)](docs/replication.md)
 
-**[Quick start](#quick-start) · [Five worked examples](#five-worked-examples) · [Estimators](#estimators) · [Documentation](#documentation)**
+**[Quick start](#quick-start) · [Six worked examples](#six-worked-examples) · [Estimators](#estimators) · [Documentation](#documentation)**
 
 PySynthCon lets you fit several synthetic controls to the same panel and see how the estimated effect changes with the method or donor pool. Compare held-out pretreatment predictions, refit after excluding donors, and put published benchmarks beside the estimates that reproduce them.
 
@@ -46,24 +46,25 @@ The SDID estimate is **−15.60 packs per capita per year**, averaged over 1989�
 
 For your own data, `Panel.from_frame` takes unit, time and outcome columns, an explicit treatment date and an optional donor list. The treatment date is the first affected observation. Panels are balanced and use a common onset within each panel. ISC and 2SISC also accept case-specific panels and aggregate in event time. [Prepare a panel](docs/data.md)
 
-## Five worked examples
+## Six worked examples
 
 | Open the notebook | What to look for |
 | --- | --- |
-| [California · tobacco control](empirical_examples/california.ipynb) | Reproduce the published SDID effect of −15.6 packs per capita and its placebo standard error of 8.4. |
+| [California · tobacco control](empirical_examples/california.ipynb) | Recover the published SDID effect of −15.6 packs per person and SE of 8.4. With the original tobacco predictors, both R Synth and the Python optimizer rank California first of 39. Their year-2000 gaps are −25.43 and −24.46 packs. |
 | [Basque Country · conflict](empirical_examples/basque.ipynb) | Recover the published SCM donor weights for Catalonia (0.8508) and Madrid (0.1492), and compare the GDP path with the original R fit. |
 | [West Germany · reunification](empirical_examples/germany.ipynb) | Rebuild the historical predictor specification and compare the GDP gap with the paper’s roughly US$1,600 annual loss per person (1990–2003, PPP-adjusted). |
 | [Kansas · tax cuts](empirical_examples/kansas.ipynb) | Match the authors’ ridge-augmented SCM vignette at −0.0401 log points and check all 16 quarterly effects. |
+| [Rhode Island · decriminalization of indoor sex work](empirical_examples/rhode_island.ipynb) | Test a six-year effect path against every cyclic shift in time. Reproduce the joint p-value of 0.04 and the six annual pointwise confidence sets for female gonorrhea incidence. |
 | [Simulation · donor spillovers](simulated_examples/donor_spillovers.ipynb) | Across 200 economies with a known +6-point effect, spillovers shift full-pool SCM by −2.78 points on average while its pretreatment fit stays identical. |
 
-The four empirical notebooks check the historical specification, then compare eleven specifications on a common panel. Each downloads hash-verified data into memory. The simulation generates its own data and runs entirely in Python. Figures are embedded in the notebooks. Executing them also writes PDF, SVG, PNG and numerical tables under `outputs/empirical_examples/<study>/` or `outputs/simulated_examples/donor_spillovers/`. [Reference targets and tolerances](docs/replication.md) · [Figure exports](docs/plotting.md)
+Four studies compare eleven estimators on a common panel. Rhode Island focuses on inference for outcome-matching SCM. All five empirical notebooks download hash-verified data into memory. Rhode Island and the simulation both run entirely in Python. The simulation generates its own data. Figures are embedded in the notebooks. Executing them also writes PDF, SVG, PNG and numerical tables under `outputs/empirical_examples/<study>/` or `outputs/simulated_examples/donor_spillovers/`. [Reference targets and tolerances](docs/replication.md) · [Figure exports](docs/plotting.md)
 
 ```bash
 python -m pip install -e ".[notebooks]"
-python scripts/execute_notebooks.py --examples donor_spillovers
+python scripts/execute_notebooks.py --examples rhode_island donor_spillovers
 ```
 
-For all five notebooks, use Python 3.11 or 3.12, install the [pinned replication requirements](requirements-replication.txt) and provision the separately supplied local R reference bundle. SCUL and vanilla ISC use the original R backends. Reproducing the California paper’s exact placebo sampling plan also uses the bundle. Once provisioned, `python scripts/execute_notebooks.py` runs all five. [Local R setup](docs/reference_backends.md)
+For all six notebooks, use Python 3.11 or 3.12, install the [pinned replication requirements](requirements-replication.txt) and provision the separately supplied local R reference bundle. SCUL and vanilla ISC use the original R backends. The California reassignment comparison also requires local R Synth 1.1-10 and the optional rpy2 bridge. Reproducing the California paper’s exact placebo sampling plan also uses the bundle. Once provisioned, `python scripts/execute_notebooks.py` runs all six. [Local R setup](docs/reference_backends.md)
 
 ## Estimators
 
@@ -97,6 +98,22 @@ print(donor_sensitivity(panel, candidates).summary)
 ```
 
 `plot_comparison` aligns ATT estimates with pretreatment RMSE, and `plot_effects` preserves a common outcome scale across methods. Both return editable Matplotlib figures. [Evaluation guide](docs/evaluation.md) · [Plotting guide](docs/plotting.md)
+
+## Is the effect unusual across units or across time?
+
+Use state reassignments when the comparison is across units. When the question concerns the timing of a particular effect path, impose that path on the treated outcome and compare its residuals across time. The methods make different assumptions. [Inference guide](docs/inference.md)
+
+```python
+from pysynth import conformal_test
+from pysynth.datasets import DATASETS, load_dataset
+
+ri = DATASETS["rhode_island"].panel(load_dataset("rhode_island"))
+test = conformal_test(ri, null_effect=0)
+print(test.p_value)  # 0.04: one of 25 cyclic windows is at least as extreme
+print(test.rotations.nlargest(3, "statistic"))
+```
+
+The Rhode Island notebook also tests each annual effect on the authors’ full grid. The spillover simulation applies the same sharp-path test to a known treatment effect and measures what happens when donors themselves respond to treatment. [Rhode Island replication](empirical_examples/rhode_island.ipynb) · [Spillover experiment](simulated_examples/donor_spillovers.ipynb)
 
 ## Documentation
 

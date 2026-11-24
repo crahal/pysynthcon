@@ -323,14 +323,14 @@ or adding long custom text; Matplotlib artists remain editable.
 
 ## Reproduce the notebook figures
 
-Each academic notebook saves a reference path, an ATT/RMSE comparison, an
+Each of the four estimator comparisons saves a reference path, an ATT/RMSE comparison, an
 effect-panel figure, a validation figure and a donor-sensitivity figure,
 plus comparison and source-check values as CSV under
 `outputs/empirical_examples/<example>/`. The donor-spillover simulation writes
 its plots and tables to `outputs/simulated_examples/donor_spillovers/`.
 These generated files stay local and
 are excluded from version control and source distributions. The committed
-notebooks embed all five figures, with local export paths and literature links immediately
+four comparison notebooks embed those figures, with local export paths and literature links immediately
 after each figure. Full setup notes, specification details and audit tables
 can be expanded below the charts. The notebooks also group emitted fit
 warnings by category and message and report their counts below the relevant
@@ -361,3 +361,9 @@ python scripts/execute_notebooks.py --output-dir /tmp/pysynth-rendered
 See [replication conventions](replication.md) for the source data, time windows
 and limits of the estimator comparisons. Better figures do not resolve those
 estimation or identification limits.
+
+## Inference figures
+
+`plot_placebo_gaps(result)` draws the eligible placebo paths in gray and the assigned unit in color. Its in-panel label gives the treated unit’s rank and denominator for the displayed screen. To reproduce the California comparison, pass `states.with_pre_mspe_cutoff(5)`. All unscreened paths are still available as `states.gaps`.
+
+`plot_conformal_set(grid, estimate)` displays the actual accepted candidates at each post-treatment date. Supplying a pretreatment SCM fit adds a point estimate for each date. Supplying the authors’ endpoints makes the numerical replication directly visible. Dates with gaps in their accepted grid retain those gaps in the plot. Use `save_figure` to export either plot in the same formats as the estimator comparisons. [Inference guide](inference.md) · [Rhode Island replication](replication.md#rhode-island-and-time-permutation-inference)

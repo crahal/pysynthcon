@@ -125,3 +125,8 @@ The contribution here is reusable, inspectable software around these methods.
 A claim of methodological novelty or improved causal performance would require
 additional theory and comparative evidence; the canonical notebooks are
 replications and applications, not that evidence.
+
+
+## Two reference distributions for a case study
+
+The contribution here is a reproducible comparison of established methods. Use unit reassignments to ask where the observed gap ranks among untreated places, and time shifts to test a specified effect path within a unit. PySynthCon keeps the full set of assignments or rotations, the native outcome scale and the authors’ empirical comparison alongside each result. The donor-spillover example uses the known truth to show when the identifying assumptions matter. At a nominal 5% level, the true six-point effect path was rejected 8 times in 200 clean full-pool simulations and 131 times in their contaminated counterparts. See the simulation for the paired sampling error and the prespecified distant-only analysis. [Inference designs](inference.md) · [Empirical benchmarks](replication.md) · [Simulation](https://github.com/crahal/pysynthcon/blob/main/simulated_examples/donor_spillovers.ipynb)

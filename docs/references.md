@@ -50,6 +50,13 @@
     what to do about it: Introducing Relaxed and Penalized Synthetic Controls.
     Working paper. [Preprint](https://arxiv.org/abs/2111.10784).
 
+13. Chernozhukov, V., Wüthrich, K. and Zhu, Y. (2021). An Exact and Robust
+    Conformal Inference Method for Counterfactual and Synthetic Controls.
+    *JASA*, 116, 1849–1864. [Article](https://doi.org/10.1080/01621459.2021.1920957) · [Journal supplement](https://doi.org/10.6084/m9.figshare.14473870.v1)
+14. Cunningham, S. and Shah, M. (2018). Decriminalizing Indoor Prostitution:
+    Implications for Sexual Violence and Public Health. *Review of Economic
+    Studies*, 85, 1683–1715. [Article](https://doi.org/10.1093/restud/rdx065)
+
 The two-stage approach is attributed to Petrillo et al.; the default follows
 their Python mean-predictor fitting specification. An explicitly selected
 MSCMT/resampling variant remains available.

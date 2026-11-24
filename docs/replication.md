@@ -1,18 +1,15 @@
 # Replication and validation
 
-The four notebooks in `empirical_examples/` use empirical applications from four methodological studies. Each downloads immutable public bytes with requests,
-verifies SHA256, checks a reference specification, and fits the comparison estimators on a shared outcome panel. Executed tables and embedded figures
-are retained in the notebooks.
+The five notebooks in `empirical_examples/` download immutable study data with requests and verify the SHA256 digest in memory. Basque, California, Germany and Kansas compare eleven specifications on a shared panel. Rhode Island reproduces the conformal SCM analysis from the journal supplement. All five retain the executed tables and figures.
 
 Each numerical check requires the complete historical calendar, the original
-treatment boundary and a finite gap in every period. Each notebook also exports five publication figures (reference paths,
+treatment boundary and a finite gap in every period. The four estimator comparisons each export five common publication figures (reference paths,
 ATT/pretreatment-fit summary, shared-scale effect panels, pretreatment validation,
 and donor-exclusion sensitivity) as PDF, SVG and
 300 dpi PNG, with a CSV of comparison values. These exports and diagnostic
 files are generated locally and excluded from version control; rerun the
 notebooks to recreate them. The [plotting guide](plotting.md)
-documents units, timing, scale and export conventions. Figures show point
-estimates without confidence intervals; the post-period shading denotes time.
+documents units, timing, scale and export conventions. Post-period shading marks treatment timing. The Rhode Island confidence-set figure identifies accepted effect values explicitly.
 
 ## Literature annotations
 
@@ -97,9 +94,55 @@ Panel defines 1990 as post-treatment. The explicit `allow_post_predictors=True` 
 in the notebook, and never used by the generic native estimators. Kansas uses
 2012.25 as in the authors' example; the outcome is a natural logarithm.
 
-The California dataset contains outcomes only. The notebook reproduces the
-SDID specification, **not** ADH (2010)'s original covariate-based SCM predictor
-specification. Native outcome SCM on that dataset is a separate comparison.
+### Proposition 99 and the in-space reassignment study
+
+California uses two sources. The common panel and SDID Table 1 replication use the authors’ outcome-only file. The ADH reassignment exercise downloads the smoking covariates and simulates each of the 39 possible treated states. It fits the diagonal predictor weights against 1970–1988 outcomes for each assignment. Income, price and the share aged 15–24 enter as 1980–1988 means, beer consumption as a 1984–1988 mean, and cigarette sales as separate 1975, 1980 and 1988 predictors. [ADH Table 1 and Figures 4–8](https://economics.mit.edu/sites/default/files/publications/Synthetic%20Control%20Methods.pdf#page=7)
+
+The Stata companion file and the authors’ MATLAB predictor matrix both give a 1980–1988 mean of 17.35% for Californians aged 15–24. Table 1 prints 17.40%. Its donor comparison is population-weighted. We preserve the source observations and the MATLAB predictor row order (income, retail price, age share, beer, then sales in 1988, 1980 and 1975). The notebook executes both the original R Synth 1.1-10 algorithm and the checked Python predictor optimizer. Donor columns follow the authors’ alphabetical state ordering for each assignment. R Synth tries both equal and regression-based starts for predictor importance with Nelder–Mead and BFGS. The Python default starts with equal importance and runs Nelder–Mead. The authors’ MATLAB software uses `fmincon` and `quadprog`. They solve the nested predictor-balance and pretreatment-outcome problems with different numerical parameterizations. [Authors’ MATLAB distribution](https://www.mit.edu/~jhainm/synthpage.html)
+
+The R Synth California fit ranks first of 39 on the unscreened post/pre MSPE ratio. Its ratio is 120.5, compared with approximately 130 in Figure 8. The fitted gap in 2000 is −25.43 annual packs per person. The paper reports about 26 fewer packs. The notebook exports all state paths and shows how many states survive the authors’ 20×, 5× and 2× pre-MSPE screens. The included state counts differ. An independent run using R Synth with the same predictor periods illustrates the variability across nested predictor-weight optimizers.
+
+| Maximum pre-MSPE relative to California | Paper controls | Python controls | R Synth controls |
+| --- | ---: | ---: | ---: |
+| All assignments | 38 | 38 | 38 |
+| 20× | 34 | 31 | 32 |
+| 5× | 29 | 26 | 27 |
+| 2× | 19 | 16 | 18 |
+
+An additional check uses the five rounded donor weights printed in Table 2. Applied directly to the companion sales data they give a year-2000 gap of −25.73 packs and a post/pre MSPE ratio of 128.38. This calculation needs no predictor optimizer. Its precision is limited by the printed weights.
+
+```python
+from pysynth.datasets import load_dataset
+
+sales = load_dataset("california_tobacco").pivot(index="year", columns="state", values="cigsale")
+states = ["Colorado", "Connecticut", "Montana", "Nevada", "Utah"]
+gap = sales["California"] - sales[states] @ [0.164, 0.069, 0.199, 0.234, 0.334]
+print(gap.loc[2000], gap.loc[1989:].pow(2).mean() / gap.loc[:1988].pow(2).mean())
+```
+
+The Python optimizer also ranks California first of 39. It gives a ratio of 101.0 and a 2000 gap of −24.46 packs. An independent all-R run, including R’s native data preparation, reproduces all 39 bridge fits’ post/pre ratios to within $8 \times 10^{-13}$. These results support the unscreened rank. The published screened counts remain sensitive to how the nested optimization is implemented.
+
+Each state refits the predictor and donor weights. In one audit run the 39 Python fits took a combined 33 worker-minutes. Twenty-two used the default outer-search recovery, and the inner quadratic needed recovery 1,313 times across the nested evaluations. Parallel workers shorten elapsed time by running independent assignments. The published study years, donor sets and solver budgets are the same as in serial execution.
+
+### Rhode Island and time-permutation inference
+
+The analysis of female gonorrhea incidence follows the SCM column of Chernozhukov, Wüthrich and Zhu. Use the 1985–2009 log rates supplied with the journal supplement. The original outcome comes from Cunningham and Shah’s study of the decriminalization of indoor sex work. The replication treats 2004 as the first affected annual observation. The source matrix labels its other 50 series V2 through V51. We preserve those labels. [Journal supplement](https://doi.org/10.6084/m9.figshare.14473870.v1) · [Original empirical study](https://doi.org/10.1093/restud/rdx065)
+
+| Sharp zero-effect test | Upper-tail windows / total | Paper p-value | Reproduced p-value |
+| --- | ---: | ---: | ---: |
+| Hold out final pretreatment year | 6 / 19 | 0.32 | 0.3158 |
+| Hold out final two pretreatment years | 6 / 19 | 0.32 | 0.3158 |
+| Hold out final three pretreatment years | 5 / 19 | 0.26 | 0.2632 |
+| Joint test for 2004–2009 | 1 / 25 | 0.04 | 0.0400 |
+
+The 90% pointwise comparison fits 701 candidate effects at each of the six post-treatment dates. An independent run of the authors’ R code gives these accepted grid endpoints in log points. The Python estimates reproduce every endpoint on the same grid. The paper presents the comparison graphically. [Figure 5 and Tables 1–2](https://arxiv.org/pdf/1712.09089#page=39) · [Authors’ reference code](https://github.com/kwuthrich/scinference/tree/567c6889ce0a1d269a62d415b88aa6baf723a3fe)
+
+| Year | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Lower | −0.26 | −0.86 | −0.81 | −1.16 | −1.46 | −1.31 |
+| Upper | 0.70 | −0.01 | 0.17 | −0.33 | −0.33 | −0.19 |
+
+The original Figure 5 uses the mean of the accepted candidate values for its central marker. The notebook reports this grid center and shows the ordinary pretreatment-fitted SCM gap as a separate estimate. The six intervals describe individual years. The joint test asks if the effect was zero in **every** year. Its p-value can therefore be small while some individual years’ sets contain zero.
 
 ## Provenance
 
@@ -107,6 +150,8 @@ specification. Native outcome SCM on that dataset is a separate comparison.
 
 - California: `synth-inference/synthdid` commit
   `70c1ce3eac58e28c30b67435ca377bb48baa9b8a`, `data/california_prop99.csv`.
+- California tobacco predictors use the [Synth authors’ Stata dataset](https://github.com/j-hai/synth-stata/blob/ae99fd1ed100e8f5ea38386f18f02e61a90956e6/s/smoking.dta).
+- Rhode Island reads only `logfemrate.txt` from the [versioned journal supplement](https://doi.org/10.6084/m9.figshare.14473870.v1).
 - Basque, Germany, Kansas: `sdfordham/pysyncon` commit
   `b77dc20e29b012ab03ca1d4caeef7b41861e86f5`, files under `data/`.
 - SCUL algorithm: `hollina/scul` commit
@@ -149,11 +194,13 @@ are not distributed in this repository. Provision it before the commands below.
 ```bash
 python -m pip install -r requirements-replication.txt
 python -m pip install -e '.[docs,dev]'
+# For the California historical placebo fits, also provision the optional r-synth bridge
+# and local Synth 1.1-10 as described in the local R setup guide.
 # First install R, C/Fortran development tools and GLPK headers (see guide below).
 python .local/reference/scripts/install_r_references.py --library .r-library
 python -m pytest
 python -m pytest -m network
-python scripts/execute_notebooks.py --examples basque california germany kansas
+python scripts/execute_notebooks.py --examples basque california germany kansas rhode_island
 ```
 
 The tested numeric environment uses Python 3.12, NumPy 2.0.2, SciPy 1.13.1,
@@ -241,7 +288,7 @@ the warnings and fit metadata remain visible, including when SDID is selected.
 
 ## SDID resample convergence checks
 
-Each notebook retains its original-cap 200-draw inference result, then replays
+Each of the four estimator comparisons retains its original-cap 200-draw inference result, then replays
 the identical resampling plan with a 1,000,000-iteration final-stage budget and
 `require_convergence=True`. No penalty, tolerance, warm start, sparsification
 or resample is changed. The strict run must meet the original objective-decrease
