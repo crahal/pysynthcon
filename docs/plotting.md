@@ -127,11 +127,15 @@ save_figure(fig, "outputs/custom/main-result.pdf")
 save_figure(fig, "outputs/custom/main-result", formats=("svg", "png"), dpi=600)
 ```
 
-Figure sizes are in inches. Notebook exports use a 7.2-inch width, appropriate
-for many two-column manuscript layouts; adjust to the target journal. PNG
-defaults to 300 dpi. PDF and SVG retain vector lines and text, independently
-of that raster resolution. PDF embeds TrueType fonts; SVG keeps editable
-text. The bundled DejaVu Sans font avoids a system-font or TeX dependency.
+The empirical notebooks export figures at 7.2 inches wide. For a journal
+submission, set the figure width to its final printed size before saving.
+Titles use **STIX Two Text**. Axis labels, estimates and direct annotations
+use **Source Sans 3**, whose equal-width digits keep neighbouring values easy
+to compare. Both families ship with PySynthCon.
+
+PDF embeds the typefaces. SVG keeps the labels editable and includes the
+glyphs used in the figure. Both formats retain vector lines at any scale.
+PNG uses the same typefaces and defaults to 300 dpi.
 
 The save helper preserves physical dimensions rather than cropping to a
 content-dependent bounding box. It creates parent directories, replaces
@@ -140,12 +144,13 @@ Captions are wrapped using actual font measurements. After adjusting a
 figure's size, use `save_figure` again to refresh caption wrapping.
 
 ```python
-from pysynth import publication_style
+from pysynth import publication_style, publication_title_font
 import matplotlib.pyplot as plt
 
 with publication_style():
     fig, ax = plt.subplots(figsize=(3.5, 2.5), layout="constrained")
     fits["SDID"].plot(ax=ax, effects=True, ylabel="Effect (packs per capita)")
+    fig.suptitle("California Proposition 99", fontproperties=publication_title_font(), fontsize=15)
     save_figure(fig, "outputs/custom/single-column.pdf")
 ```
 

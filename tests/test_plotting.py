@@ -15,6 +15,8 @@ from pysynth import (
     plot_comparison,
     plot_effects,
     plot_paths,
+    publication_style,
+    publication_title_font,
     reference_comparison_table,
     save_figure,
 )
@@ -152,6 +154,22 @@ def test_existing_estimate_plot_contract(panel):
     np.testing.assert_allclose(line.get_ydata(), fit.effects)
 
 
+def test_publication_fonts_resolve_to_packaged_faces():
+    from pathlib import Path
+
+    from matplotlib.font_manager import FontProperties, findfont
+
+    with publication_style():
+        folder = Path(publication_title_font().get_file()).parent
+        for family, weight, filename in [
+            ("Source Sans 3", "normal", "SourceSans3-Regular.ttf"),
+            ("Source Sans 3", "semibold", "SourceSans3-Semibold.ttf"),
+            ("STIX Two Text", "semibold", "STIXTwoText-SemiBold.ttf"),
+        ]:
+            prop = FontProperties(family=family, weight=weight)
+            assert Path(findfont(prop)).samefile(folder / filename)
+
+
 def test_plotting_and_export_preserve_rcparams(tmp_path):
     keys = [
         "font.family",
@@ -171,6 +189,11 @@ def test_plotting_and_export_preserve_rcparams(tmp_path):
 
 
 def test_pdf_svg_png_exports_with_physical_size_and_editable_fonts(tmp_path):
+    import re
+    from base64 import b64decode
+    from io import BytesIO
+
+    from fontTools.ttLib import TTFont
     from PIL import Image
 
     ax = plot_paths(example(pd.Index([1, 2, 3, 4])), figsize=(7.2, 3.8))
@@ -181,10 +204,33 @@ def test_pdf_svg_png_exports_with_physical_size_and_editable_fonts(tmp_path):
     assert b"/Subtype /Type3" not in pdf
     svg = paths[1].read_text()
     assert "<svg" in svg and "<text" in svg and "Observed" in svg
+    assert b"SourceSans3-Regular" in pdf and b"STIXTwoText-SemiBold" in pdf
+    assert "SIL OPEN FONT LICENSE" in svg
+    faces = set()
+    for data in re.findall(r"data:font/woff;base64,([A-Za-z0-9+/=]+)", svg):
+        with TTFont(BytesIO(b64decode(data))) as font:
+            faces.add((font["name"].getDebugName(1), font["OS/2"].usWeightClass))
+            assert font["name"].getDebugName(0) and font["name"].getDebugName(13)
+            assert ord("e") in font.getBestCmap()
+    assert faces == {
+        ("PySynthCon Figure Sans", 400),
+        ("PySynthCon Figure Sans", 600),
+        ("PySynthCon Figure Serif", 600),
+    }
     with Image.open(paths[2]) as raster:
         assert raster.size == (2160, 1140)
     assert plt.fignum_exists(ax.figure.number)
     assert save_figure(ax.figure, tmp_path / "single.pdf") == (tmp_path / "single.pdf",)
+
+
+def test_svg_preserves_custom_type_and_literal_font_names(tmp_path):
+    fig = plt.figure()
+    label = "Compare 'Source Sans 3' and 'STIX Two Text'."
+    fig.text(0.1, 0.5, label, family="DejaVu Serif")
+    (path,) = save_figure(fig, tmp_path / "custom.svg")
+    svg = path.read_text()
+    assert label in svg and "'DejaVu Serif'" in svg
+    assert "data:font/woff" not in svg
 
 
 @pytest.mark.parametrize("formats", [(), ("jpg",), ("pdf", "bogus")])

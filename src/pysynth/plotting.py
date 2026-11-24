@@ -7,6 +7,7 @@ plot settings. No function estimates uncertainty or refits an estimator.
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from textwrap import fill
 from typing import Mapping, Sequence
@@ -22,6 +23,13 @@ MUTED = "#667580"
 GRID = "#E4E8EB"
 POST = "#F1F4F6"
 LITERATURE = "#87582E"
+
+_FONT_DIR = Path(__file__).with_name("fonts")
+_FONT_FACES = (
+    ("Source Sans 3", "SourceSans3-Regular.ttf", 400),
+    ("Source Sans 3", "SourceSans3-Semibold.ttf", 600),
+    ("STIX Two Text", "STIXTwoText-SemiBold.ttf", 600),
+)
 
 
 @dataclass(frozen=True)
@@ -320,7 +328,7 @@ def _reference_spacing(ref):
     return 0.6 + 0.4 * _reference_lines(ref)
 
 
-def _callout(ax, text, xy, *, width=36, fontsize=7.3, color=LITERATURE, url=None):
+def _callout(ax, text, xy, *, width=36, fontsize=7.8, color=LITERATURE, url=None):
     """Place a callout in open space. Only point to data for a numeric target."""
     original = text
     text = "\n".join(fill(line, width=width) for line in text.splitlines())
@@ -377,7 +385,7 @@ def _annotate_references(ax, x, references, estimate, *, effects=False, small=Fa
                 f"Mean ATT {_number(estimate.att)}",
                 ((x[estimate.n_pre] + x[-1]) / 2, estimate.att),
                 width=27,
-                fontsize=7,
+                fontsize=7.5,
                 color=color,
             )
         return
@@ -398,7 +406,7 @@ def _annotate_references(ax, x, references, estimate, *, effects=False, small=Fa
             _reference_text(ref, numbers[(ref.citation, ref.source_url)]),
             (x[middle], target),
             width=29 if small else 47,
-            fontsize=6.8 if small else 7.8,
+            fontsize=7.4 if small else 8,
             url=ref.source_url,
         )
 
@@ -544,9 +552,10 @@ def _direct_path_labels(ax, x, estimate, observed_label, counterfactual_label, c
             xytext=(end + 0.035 * span, position),
             ha="left",
             va="center",
-            fontsize=7.5,
+            fontsize=8,
+            fontweight="semibold",
             color=color,
-            linespacing=1.3,
+            linespacing=1.25,
             arrowprops={"arrowstyle": "-", "color": color, "linewidth": 0.7},
             annotation_clip=False,
             zorder=5,
@@ -598,19 +607,51 @@ def _matplotlib():
     return mpl, plt
 
 
+@cache
+def _register_fonts():
+    from matplotlib import font_manager
+
+    manager = font_manager.fontManager
+    for _, filename, _ in _FONT_FACES:
+        manager.addfont(_FONT_DIR / filename)
+        # addfont appends. findfont breaks ties on the first matching face,
+        # so prefer the bundled TTF over system versions with the same name.
+        manager.ttflist.insert(0, manager.ttflist.pop())
+
+
+def publication_title_font():
+    """Return fresh Matplotlib font properties for a STIX Two Text semibold heading.
+
+    Pass the result as ``fontproperties`` to a custom title. The explicit
+    TrueType file keeps the same face in PDFs even on hosts with a system
+    OpenType version of STIX Two Text.
+    """
+    _matplotlib()
+    from matplotlib.font_manager import FontProperties
+
+    return FontProperties(
+        family=["STIX Two Text", "serif"],
+        fname=_FONT_DIR / "STIXTwoText-SemiBold.ttf",
+        weight="semibold",
+    )
+
+
 @contextmanager
 def publication_style():
     """Temporarily use legible typography, restrained axes and vector fonts.
 
-    DejaVu Sans ships with Matplotlib. PDF text uses embedded TrueType fonts;
-    SVG text remains editable. Use :func:`save_figure` to apply the export
-    settings at save time as well. No external fonts or TeX are required.
+    The packaged Source Sans 3 faces have tabular lining numerals, and
+    figure headings use STIX Two Text. Use :func:`save_figure` to embed
+    fonts in vector exports. No external fonts or TeX are required.
     """
     mpl, _ = _matplotlib()
+    _register_fonts()
     with mpl.rc_context(
         {
-            "font.family": "DejaVu Sans",
-            "font.size": 9,
+            "font.family": ["Source Sans 3", "sans-serif"],
+            "font.sans-serif": ["DejaVu Sans"],
+            "font.serif": ["STIXGeneral", "DejaVu Serif"],
+            "font.size": 9.5,
             "font.weight": "normal",
             "text.usetex": False,
             "text.color": INK,
@@ -626,8 +667,8 @@ def publication_style():
             "axes.grid": False,
             "xtick.color": MUTED,
             "ytick.color": MUTED,
-            "xtick.labelsize": 8,
-            "ytick.labelsize": 8,
+            "xtick.labelsize": 8.5,
+            "ytick.labelsize": 8.5,
             "xtick.major.size": 3,
             "ytick.major.size": 3,
             "xtick.major.width": 0.6,
@@ -840,9 +881,9 @@ def _figure_grid(figsize, title, subtitle, note, benchmark=None, references=()):
             wrapped_title,
             transform=heading.transAxes,
             va="top",
-            fontsize=13,
-            fontweight="semibold",
-            linespacing=1.25,
+            fontsize=15,
+            fontproperties=publication_title_font(),
+            linespacing=1.18,
         )
     if wrapped_subtitle:
         subtitle_artist = heading.text(
@@ -851,7 +892,7 @@ def _figure_grid(figsize, title, subtitle, note, benchmark=None, references=()):
             wrapped_subtitle,
             transform=heading.transAxes,
             va="bottom",
-            fontsize=8.5,
+            fontsize=9.5,
             color=MUTED,
             linespacing=1.3,
         )
@@ -864,9 +905,9 @@ def _figure_grid(figsize, title, subtitle, note, benchmark=None, references=()):
             wrapped_note,
             transform=footer.transAxes,
             va="top",
-            fontsize=7.5,
+            fontsize=8,
             color=MUTED,
-            linespacing=1.35,
+            linespacing=1.3,
         )
     # Caption widths must not force constrained_layout to squeeze the plot.
     # Wrap against measured axes widths after the plotting axes are present.
@@ -1200,7 +1241,7 @@ def plot_paths(
             ax.set_title(
                 title or estimate.method,
                 loc="left",
-                fontweight="semibold",
+                fontproperties=publication_title_font(),
                 pad=31 if not effects else 12,
             )
         label = ylabel or ("Observed − counterfactual" if effects else "Outcome")
@@ -1354,7 +1395,7 @@ def plot_effects(
                         if benchmark.value is not None
                         else None,
                         width=27,
-                        fontsize=6.8,
+                        fontsize=7.4,
                         url=benchmark.source_url,
                     )
             display_name = (labels or {}).get(name, name)
@@ -1506,7 +1547,7 @@ def plot_comparison(
                     xytext=(7, 0),
                     textcoords="offset points",
                     va="center",
-                    fontsize=8,
+                    fontsize=8.5,
                     color=INK,
                     bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.8},
                 )
@@ -1542,7 +1583,7 @@ def plot_comparison(
                             textcoords="offset points",
                             va="top",
                             ha="left",
-                            fontsize=7,
+                            fontsize=7.5,
                             color=LITERATURE,
                             linespacing=1.2,
                             bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.6},
@@ -1552,7 +1593,7 @@ def plot_comparison(
                             fig, "_pysynth_row_annotations", []
                         ) + [(artist, text)]
                         artist.set_url(ref.source_url)
-                        offset += len(text.splitlines()) * 7 * 1.2 + 6
+                        offset += len(text.splitlines()) * artist.get_fontsize() * 1.2 + 6
                 if benchmark is not None:
                     _callout(
                         ax,
@@ -1561,7 +1602,7 @@ def plot_comparison(
                         if benchmark.value is not None
                         else None,
                         width=30,
-                        fontsize=7,
+                        fontsize=7.5,
                         url=benchmark.source_url,
                     )
             if metric == "att" and benchmark is not None and benchmark.value is not None:
@@ -1580,10 +1621,88 @@ def plot_comparison(
                 MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10], min_n_ticks=3)
             )
             ax.xaxis.set_major_formatter(FuncFormatter(_tick_number))
-            ax.set_title(heading, loc="left", fontsize=9, fontweight="semibold", pad=12)
+            ax.set_title(heading, loc="left", fontsize=10, fontweight="semibold", pad=12)
             ax.set_xlabel(f"{'ATT' if metric == 'att' else 'RMSE'} ({units})", fontsize=8.5)
         _finish_figure(fig)
         return fig, axes
+
+
+def _svg_font_face(filename, alias, weight, characters):
+    """Build an OFL webfont subset for the characters in this editable figure."""
+    from base64 import b64encode
+    from io import BytesIO
+
+    from fontTools import subset
+    from fontTools.ttLib import TTFont
+
+    options = subset.Options()
+    options.name_IDs = list(range(18))  # Keep authorship, copyright and license records.
+    options.layout_features = ["*"]
+    with TTFont(_FONT_DIR / filename, recalcTimestamp=False) as font:
+        subsetter = subset.Subsetter(options=options)
+        subsetter.populate(unicodes=characters)
+        subsetter.subset(font)
+        # A subset is a modified font. Give it its own family and PostScript
+        # names while retaining all the original author and licensing records.
+        style = "Regular" if weight == 400 else "Semibold"
+        full_name = f"{alias} {style}"
+        ps_name = full_name.replace(" ", "")
+        names = {1: alias, 2: style, 3: ps_name, 4: full_name, 6: ps_name, 16: alias, 17: style}
+        for record in font["name"].names:
+            if record.nameID in names:
+                record.string = names[record.nameID]
+        font.flavor = "woff"
+        buffer = BytesIO()
+        font.save(buffer)
+    data = b64encode(buffer.getvalue()).decode("ascii")
+    return (
+        f"@font-face {{ font-family: '{alias}'; font-weight: {weight}; "
+        f"src: url(data:font/woff;base64,{data}) format('woff'); }}"
+    )
+
+
+def _embed_svg_fonts(svg):
+    """Keep text editable and its measured typefaces available in standalone SVG."""
+    from xml.dom import minidom
+
+    families = {
+        "Source Sans 3": ("PySynthCon Figure Sans", "SourceSans3-LICENSE.md"),
+        "STIX Two Text": ("PySynthCon Figure Serif", "STIXTwoText-OFL.txt"),
+    }
+    document = minidom.parseString(svg)
+    characters = set()
+    used = set()
+    for tag in ("text", "tspan"):
+        for element in document.getElementsByTagName(tag):
+            for node in element.childNodes:
+                if node.nodeType == node.TEXT_NODE:
+                    characters.update(map(ord, node.data))
+            style = element.getAttribute("style")
+            for family, (alias, _) in families.items():
+                # Matplotlib quotes named families and writes generic families
+                # unquoted. Keep original and generic fallbacks for SVG editors.
+                name = f"'{family}'"
+                if name in style:
+                    used.add(family)
+                    style = style.replace(name, f"'{alias}', {name}")
+                    element.setAttribute("style", style)
+    if not used:
+        return svg
+    rules = [
+        _svg_font_face(filename, families[family][0], weight, characters)
+        for family, filename, weight in _FONT_FACES
+        if family in used
+    ]
+    style = document.createElement("style")
+    style.appendChild(document.createTextNode("\n".join(rules)))
+    document.getElementsByTagName("defs")[0].appendChild(style)
+    metadata = document.createElement("metadata")
+    licenses = [
+        (_FONT_DIR / families[name][1]).read_text(encoding="utf-8") for name in sorted(used)
+    ]
+    metadata.appendChild(document.createTextNode("\n".join(licenses)))
+    document.documentElement.appendChild(metadata)
+    return document.toxml(encoding="utf-8")
 
 
 def save_figure(
@@ -1601,6 +1720,8 @@ def save_figure(
     PNG DPI affects raster resolution only. Return the written paths; the
     Figure stays open. Existing destination files are replaced.
     """
+    from io import BytesIO
+
     path = Path(path)
     if path.suffix:
         formats = (path.suffix.lstrip(".").lower(),)
@@ -1623,13 +1744,16 @@ def save_figure(
                 metadata = {"Creator": "PySynthCon", "Date": None}
             else:
                 metadata = {"Software": "PySynthCon"}
+            output = BytesIO() if fmt == "svg" else destination
             figure.savefig(
-                destination,
+                output,
                 format=fmt,
                 dpi=dpi,
                 facecolor="white",
                 bbox_inches=None,
                 metadata=metadata,
             )
+            if fmt == "svg":
+                destination.write_bytes(_embed_svg_fonts(output.getvalue()))
             destinations.append(destination)
     return tuple(destinations)

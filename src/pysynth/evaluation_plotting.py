@@ -31,7 +31,7 @@ def _rows(ax, names, labels, *, show_labels=True):
         else [""] * len(names),
     )
     ax.set_ylim(len(names) - 0.5, -0.5)
-    ax.tick_params(axis="y", length=0, pad=9, labelsize=8)
+    ax.tick_params(axis="y", length=0, pad=9, labelsize=8.5)
     ax.tick_params(axis="x", length=3, width=0.6, labelcolor=MUTED)
     ax.xaxis.set_major_locator(MaxNLocator(nbins=4, min_n_ticks=3))
     ax.xaxis.set_major_formatter(FuncFormatter(_tick_number))
@@ -98,7 +98,7 @@ def plot_backtest(
                 xytext=(7, 0),
                 textcoords="offset points",
                 va="center",
-                fontsize=8,
+                fontsize=8.5,
             )
             if minima[row]:
                 # Label all exact ties: choosing the first row would imply a
@@ -111,12 +111,12 @@ def plot_backtest(
                     textcoords="offset points",
                     va="top",
                     ha="right" if right_aligned else "left",
-                    fontsize=7,
+                    fontsize=7.5,
                     color=BLUE,
                 )
         left.set_xlim(0, (pooled.max() or 1) * 1.45)
-        left.set_xlabel(f"Pooled held-out RMSE\n({units})\n{sample_size}", fontsize=7.5)
-        left.set_title("A  Overall validation", loc="left", fontsize=9, fontweight="semibold")
+        left.set_xlabel(f"Pooled held-out RMSE\n({units})\n{sample_size}", fontsize=8)
+        left.set_title("A  Overall validation", loc="left", fontsize=9.5, fontweight="semibold")
 
         maximum = float(values.max()) or 1.0
         right.imshow(values, cmap="Blues", vmin=0, vmax=maximum, aspect="auto")
@@ -125,7 +125,7 @@ def plot_backtest(
         right.set_xlabel("Validation fold (earlier → later)", fontsize=8)
         right.tick_params(length=0, labelcolor=MUTED)
         right.spines[:].set_visible(False)
-        right.set_title("B  Held-out RMSE by fold", loc="left", fontsize=9, fontweight="semibold")
+        right.set_title("B  Held-out RMSE by fold", loc="left", fontsize=9.5, fontweight="semibold")
         for row, column in np.ndindex(values.shape):
             value = values[row, column]
             right.text(
@@ -204,7 +204,7 @@ def plot_donor_sensitivity(
                 textcoords="offset points",
                 ha="center",
                 va="bottom",
-                fontsize=7,
+                fontsize=7.5,
                 color=BLUE,
                 bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.2},
             )
@@ -216,7 +216,7 @@ def plot_donor_sensitivity(
                 xytext=(7, 0),
                 textcoords="offset points",
                 va="center",
-                fontsize=8,
+                fontsize=8.5,
             )
             scenario = str(summary.loc[name, "worst_scenario"])
             scenario_label = f"Omit {scenario[5:]}" if scenario.startswith("omit:") else scenario
@@ -231,7 +231,7 @@ def plot_donor_sensitivity(
                 textcoords="offset points",
                 ha="center",
                 va="top",
-                fontsize=7,
+                fontsize=7.5,
                 color=MUTED,
             )
         low, high = min(all_values), max(all_values)
@@ -240,7 +240,7 @@ def plot_donor_sensitivity(
         right.set_xlim(0, (summary.max_abs_change.max() or 1) * 1.4)
         right.set_xlabel(f"Maximum |ATT change|\n({units})", fontsize=8)
         left.set_title(
-            "A  Baseline and exclusion fits", loc="left", fontsize=9, fontweight="semibold"
+            "A  Baseline and exclusion fits", loc="left", fontsize=9.5, fontweight="semibold"
         )
         right.set_title(
             "B  Largest change · exclusion", loc="left", fontsize=8.5, fontweight="semibold"
@@ -251,6 +251,6 @@ def plot_donor_sensitivity(
             if len(counts) == 1
             else f"{len(result.table)} exclusion refits in total"
         )
-        left.set_xlabel(f"ATT ({units})\n{count_note}", fontsize=7.5)
+        left.set_xlabel(f"ATT ({units})\n{count_note}", fontsize=8)
         _finish_figure(fig)
         return fig, axes

@@ -13,6 +13,7 @@ from .plotting import (
     plot_effects,
     plot_paths,
     publication_style,
+    publication_title_font,
     reference_comparison_table,
     save_figure,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "plot_effects",
     "plot_comparison",
     "publication_style",
+    "publication_title_font",
     "save_figure",
     "LiteratureBenchmark",
     "ReferenceComparison",

@@ -3,6 +3,19 @@
 PySynthCon retains this repository's GPL-3.0 license. Dependencies remain under their
 own licenses. Data downloads remain subject to their original terms and attribution.
 
+## Figure fonts
+
+The package distributes the original static TrueType files for Source Sans 3
+Regular and Semibold (Adobe, version 3.052) and STIX Two Text Semibold (The
+STIX Fonts Project Authors, version 2.13 b171). Both families use the SIL Open
+Font License 1.1. The README illustrations embed renamed subsets of these
+typefaces and carry their copyright and license notices.
+
+- Source Sans 3. [Upstream release](https://github.com/adobe-fonts/source-sans/releases/tag/3.052R) · [License and copyright](src/pysynth/fonts/SourceSans3-LICENSE.md)
+- STIX Two Text. [Upstream release](https://github.com/stipub/stixfonts/releases/tag/v2.13b171) · [License and copyright](src/pysynth/fonts/STIXTwoText-OFL.txt)
+
+## Estimators
+
 The SDID numerical solver is a Python adaptation of the synthdid reference
 algorithm by David A. Hirshberg and contributors, commit
 70c1ce3eac58e28c30b67435ca377bb48baa9b8a. Its BSD notice follows.

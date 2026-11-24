@@ -37,7 +37,7 @@ Publication figures
 -------------------
 
 .. automodule:: pysynth.plotting
-   :members: LiteratureBenchmark, ReferenceComparison, reference_comparison_table, plot_paths, plot_effects, plot_comparison, publication_style, save_figure
+   :members: LiteratureBenchmark, ReferenceComparison, reference_comparison_table, plot_paths, plot_effects, plot_comparison, publication_style, publication_title_font, save_figure
 
 Inference
 ---------
