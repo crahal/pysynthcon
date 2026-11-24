@@ -93,7 +93,7 @@ def build(name, title, description, reference):
             "`python .local/reference/scripts/install_r_references.py --library .r-library` after "
             "following [the R setup guide](../docs/reference_backends.md). "
             "The notebook downloads immutable public data with "
-            "**requests**, checks the reference specification, and exports three "
+            "**requests**, checks the reference specification, and exports five "
             "publication figures locally as PDF, SVG and 300 dpi PNG. "
             "The figures are embedded below; generated exports stay outside version control. "
             "See [the replication guide](../docs/replication.md) and "
@@ -106,6 +106,7 @@ def build(name, title, description, reference):
             import json
             import time
             from dataclasses import replace
+            from functools import partial
             from io import BytesIO
             from pathlib import Path
             from importlib.metadata import version
@@ -120,6 +121,7 @@ def build(name, title, description, reference):
                 SyntheticControl, SCUL, IndividualSC, TwoStageIndividualSC,
                 SyntheticDID, DifferenceInDifferences, PySyncon, SCM, compare,
                 plot_paths, plot_effects, plot_comparison, save_figure,
+                select_estimator, donor_sensitivity, plot_backtest, plot_donor_sensitivity,
             )
             from pysynth.datasets import DATASETS
             from pysynth.replication import (
@@ -248,8 +250,12 @@ def build(name, title, description, reference):
             shown below; these are new applications, not paper-specific calibrations.
 
             ISC calls **MSCMT**, using the costofcare bootstrap workflow with **50
-            donor resamples**. 2SISC first selects up to ten nearest donors, then
-            runs the same ISC procedure within that group. These aggregate panels
+            donor resamples**. 2SISC follows Petrillo et al. (2025): raw nearest-neighbor
+            screening followed by nested SCM on temporal predictor means, without
+            donor resampling. `n_neighbors=10` counts ten donors; the authors' KDTree
+            implementation counts the treated case in its query size. The earlier
+            MSCMT/50-draw two-stage variant remains explicitly available through
+            `backend='mscmt', n_bootstrap=50`. These aggregate panels
             do not provide the survey-specific demographic predictors, eligibility
             rules, or individual sampling design of the original ISC studies.
 
@@ -354,6 +360,91 @@ def build(name, title, description, reference):
                 note=figure_details['periods'] + '. Shading marks the post-period; no uncertainty intervals are shown.',
             )
             effects_files = export_figure(fig, 'effects')
+            plt.show()
+        """),
+        markdown("""
+            ## Pretreatment validation and specification selection
+
+            These are **new analyses of the academic data**, separate from the paper
+            replications above. We compare methods and three prespecified 2SISC donor
+            counts on common withheld pretreatment blocks. Every actual post-treatment
+            row is excluded from validation. Held-out treated outcomes are masked
+            during fitting; contemporaneous donor outcomes remain available.
+
+            SCUL keeps its original internal rolling windows, so the outer training
+            sample must be long enough to contain them. Short panels consequently
+            offer only a few validation folds: this is a transparent illustration,
+            not strong evidence that the selected estimator is generally superior.
+            Every fit retains the estimator's full optimization and resampling settings.
+            SCUL's full-series admissibility screen sees the masked target series here.
+
+            Selection minimizes pooled held-out RMSE, then fits the winner on the
+            original panel. The selected score is optimistic after model selection;
+            no post-selection confidence interval or causal guarantee is implied.
+            Candidate choices and folds must be set before examining treatment effects.
+        """),
+        code("""
+            candidates = {
+                'Outcome SCM': SyntheticControl,
+                'SCUL': partial(SCUL, initial_window=initial, horizon=horizon),
+                'ISC': IndividualSC,
+                'SDID': SyntheticDID,
+                'DID': DifferenceInDifferences,
+                **{f'2SISC k={k}': partial(TwoStageIndividualSC, n_neighbors=k)
+                   for k in (3, 5, 10)},
+            }
+            validation_start = max(panel.n_pre // 2, initial + horizon)
+            validation_horizon = max(1, (panel.n_pre - validation_start) // 3)
+            selection = select_estimator(
+                panel, candidates, initial_window=validation_start,
+                horizon=validation_horizon,
+            )
+            validation = selection.validation
+            display(validation.summary)
+            display(validation.scores[['model', 'fold', 'training_end', 'validation_start',
+                                       'validation_end', 'validation_rmse']])
+            print(f'Selected by pretreatment validation: {selection.selected_name}')
+            print(f'Full-panel selected ATT: {selection.estimate.att:.6g}')
+            validation.summary.to_csv(figure_dir / f'{name}-validation-summary.csv')
+            validation.scores.to_csv(figure_dir / f'{name}-validation-folds.csv', index=False)
+            validation.predictions.to_csv(figure_dir / f'{name}-validation-predictions.csv', index=False)
+            fig, axes = plot_backtest(
+                validation, title=figure_details['case'] + ' · pretreatment validation',
+                units=figure_details['units'],
+            )
+            validation_files = export_figure(fig, 'validation')
+            plt.show()
+        """),
+        markdown("""
+            ## Dependence on donor eligibility
+
+            Remove **every eligible donor in turn** and completely refit three distinct
+            estimator families: outcome SCM, the authors' two-stage ISC specification,
+            and SDID. 2SISC repeats nearest-neighbor screening after each exclusion.
+            This includes donors whose baseline weight was zero; no old weights are
+            simply renormalized. The API accepts the other supported methods and
+            named donor groups using the same protocol.
+
+            The figure shows the baseline, every refitted ATT, and the largest absolute
+            change. Scenario ranges are **not confidence intervals**. Neither a stable
+            result nor a sign reversal establishes whether a donor is causally valid.
+            These diagnostics should inform the study design, not selection of a
+            donor pool that produces a preferred effect.
+        """),
+        code("""
+            sensitivity = donor_sensitivity(panel, {
+                'Outcome SCM': SyntheticControl,
+                '2SISC k=10': partial(TwoStageIndividualSC, n_neighbors=10),
+                'SDID': SyntheticDID,
+            })
+            display(sensitivity.summary)
+            sensitivity.table.to_csv(figure_dir / f'{name}-donor-sensitivity.csv', index=False)
+            sensitivity.summary.to_csv(figure_dir / f'{name}-donor-sensitivity-summary.csv')
+            fig, axes = plot_donor_sensitivity(
+                sensitivity, title=figure_details['case'] + ' · donor sensitivity',
+                units=figure_details['units'],
+            )
+            sensitivity_files = export_figure(fig, 'donor-sensitivity')
             plt.show()
         """),
         markdown("""

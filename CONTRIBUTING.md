@@ -48,6 +48,13 @@ data URLs, hashes and tolerances chosen from reference precision. Do not widen
 a tolerance merely to make a failing result pass. Separate published values,
 upstream numerical parity and a new empirical application.
 
+Changes to the shared evaluation workflows must preserve fresh estimator
+instances, identical folds, masked held-out treated outcomes, and complete
+refits under the original fitting settings. Covariate wrappers must use the
+received panel's training dates and eligible units. Keep every candidate's
+diagnostics; never silently drop failed fits. Donor-sensitivity ranges are
+descriptive, and selection scores do not supply post-selection inference.
+
 ## Validate a change
 
 ```bash
@@ -67,9 +74,10 @@ notebook per academic setting, not per method. Do not hand-edit numerical
 outputs. Network-dependent tests carry the `network` marker and are excluded
 from the default suite.
 
-Figure changes belong in `pysynth.plotting`, with notebooks calling the public
-API. Preserve observed-minus-counterfactual signs, actual calendar spacing,
-common comparison windows and explicit units. Do not infer uncertainty from
+Figure changes belong in `pysynth.plotting` or `pysynth.evaluation_plotting`,
+with notebooks calling the public API. Preserve observed-minus-counterfactual
+signs, actual calendar spacing, common comparison windows and explicit units.
+Do not infer uncertainty from
 variation across estimators. Test artist coordinates and summary values;
 visually review the exported figures at their intended physical dimensions.
 After changes, re-execute every affected notebook and inspect its PDF, SVG

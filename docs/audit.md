@@ -23,6 +23,7 @@ its authors' software and from applying that method to a new dataset.
 | Source distributions could include restored ignored helper files. | setuptools inclusion patterns do not honor Git ignore rules. | Explicitly exclude old local helper paths, private reference resources and executed-notebook copies; inspect built archives. |
 | Local notebook diagnostics ended with a literal backslash-n. | The exported file was not valid JSON. | Write an actual newline; generated-code tests compile every notebook and parse the diagnostic output. |
 | The notebook runner retained completed kernels. | Supplying an external kernel manager disables nbclient's default cleanup, leaving earlier notebooks' processes and channels alive during a long run. | Explicitly request cleanup; real-kernel tests verify shutdown and connection-resource removal after both success and failure. |
+| Documentation called 2SISC an unpublished extension and its default combined screening with the separate MSCMT replication workflow. | Petrillo et al. (2025) already describe the approach; their two-stage Python code fits temporal-mean predictors without resampling donors. | Credit the paper and make that fitting specification the default. Direct KDTree/pysyncon comparison tests verify multivariate fits. Preserve the MSCMT/resampling variant explicitly. |
 
 The independent Basque run uses R Synth 1.1-10 and the authors' documented
 paper Table 3 preparation. Its 1975–1997 mean effect is **−0.6995627076** thousand 1986 US
@@ -74,11 +75,12 @@ arise when equivalent objective scaling changes a nonconvex optimizer's path.
   holdout block. The pinned pysyncon implementation follows that convention;
   changing it would break software parity. Its lambda grid and one-standard-
   error selection were checked against the authors' implementation.
-- **ISC and 2SISC:** costofcare's 50 replacement donor samples, predictor-series
+- **ISC:** costofcare's 50 replacement donor samples, predictor-series
   groups, duplicate-donor aggregation, sampling/optimization seeds and case
   aggregation agree with the audited source. The original standalone ISC
-  demonstration uses ten draws; this remains an explicit option. 2SISC adds
-  the requested nearest-neighbor screen before the same ISC procedure.
+  demonstration uses ten draws; this remains an explicit option. These checks
+  also cover the explicit MSCMT variant of 2SISC. The default now follows
+  the separate [two-stage Python fitting specification](methods.md#two-stage-individual-synthetic-control-2sisc).
 - **Germany:** including 1990 in historical predictor/validation windows is
   stated in the paper. It remains an explicit historical exception. Units
   remain PPP current US dollars, consistent with the authors' 2025 erratum.
@@ -99,7 +101,10 @@ The aggregate examples do not reproduce the original SCUL scanner-data study
 or ISC motherhood/care studies. Those require the study-specific data,
 eligibility rules, covariates and population-inference design. ISC donor draws
 are sensitivity outputs, not the published study's full population-variance
-estimator. 2SISC is a requested extension, with no published numerical target.
+estimator. The 2SISC aggregate examples have no numerical target in the care
+study. Matching the core fitting specification does not reproduce its survey
+eligibility, event windows, covariates or population inference. PySynth counts
+donors explicitly; the source's neighbor query also counts the treated case.
 Penalized and robust SCM notebook tuning values remain explicitly illustrative.
 
 Nested SCM remains nonconvex; full optimization and successful numerical checks
@@ -114,14 +119,27 @@ exact R sampling plan.
 
 ## Validation
 
-The complete provisioned suite passes **245 tests**, including online academic
+The complete provisioned suite passes **374 tests**, including online academic
 references and local original-R integration. Independent SDID reruns match all
 inference draws within `2.76e-14`; SCUL screening matches 1,840 direct caret
 column/window decisions. All 16 canonical pysyncon adapter fits pass checked
 termination. Notebook source checks compile every code cell and parse generated
 diagnostic JSON. All four empirical notebooks were re-executed successfully:
-48 comparison fits, twelve embedded figures, ten starts per SyntheticControlMethods
-fit, 50 draws per ISC/2SISC fit and 200 SDID inference draws per example.
+48 comparison fits, twenty embedded figures, ten starts per SyntheticControlMethods
+fit, 50 draws per ISC fit, the authors' non-resampling default 2SISC specification,
+and 200 SDID inference draws per example.
+
+The new evaluation sections compare eight candidates using 72 complete fold
+fits and four fresh selected-model fits. Basque, California and Germany each
+have two held-out observations per candidate; Kansas has 45 across three
+folds. These sample sizes are displayed on the figures. The sensitivity sections
+perform 357 donor-exclusion refits plus twelve full-pool baselines, covering
+every eligible donor for outcome SCM, 2SISC and SDID. Independently recomputed
+fold errors, pooled scores, ATT changes and scenario extrema agree with the
+exported tables. Tests cover target masking, labels, fresh instances, full
+refits, immutable diagnostics and contextual failures. Original SDID
+iteration-cap warnings remain visible in validation as well as point fits.
+
 Strict Sphinx, Ruff and distribution builds pass; archive
 inspection finds no R code, private helpers or generated empirical exports.
 
@@ -131,6 +149,8 @@ inspection finds no R code, private helpers or generated empirical exports.
   and the [authors' Synth preparation example](https://cran.r-project.org/web/packages/Synth/refman/Synth.html#dataprep).
 - [SCUL setup and preprocessing source](https://github.com/hollina/scul/tree/121b588cf8e4eebcea68518b57a7c754040153bb/R).
 - [costofcare replication](https://github.com/centre-for-care/costofcare/tree/6e7537d67b86fb08709d35b035c9ee9f45e83e93/replication_attempt/src).
+- [Petrillo et al. (2025), two-stage individual synthetic control](https://eprints.whiterose.ac.uk/id/eprint/224118/1/Binder2025004.pdf)
+  and the [two-stage Python source](https://github.com/centre-for-care/costofcare/blob/6e7537d67b86fb08709d35b035c9ee9f45e83e93/src/utils.py).
 - [SDID paper](https://arxiv.org/pdf/1812.09970v4),
   [point estimator](https://github.com/synth-inference/synthdid/blob/70c1ce3eac58e28c30b67435ca377bb48baa9b8a/R/synthdid.R)
   and [variance implementation](https://github.com/synth-inference/synthdid/blob/70c1ce3eac58e28c30b67435ca377bb48baa9b8a/R/vcov.R).

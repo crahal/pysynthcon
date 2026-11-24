@@ -6,8 +6,9 @@ verifies SHA256, checks a reference specification, and runs all twelve
 interfaces on a shared outcome panel. Executed tables and embedded figures
 are retained in the notebooks.
 
-Each notebook also exports three publication figures (reference paths,
-ATT/pretreatment-fit summary, and shared-scale effect panels) as PDF, SVG and
+Each notebook also exports five publication figures (reference paths,
+ATT/pretreatment-fit summary, shared-scale effect panels, pretreatment validation,
+and donor-exclusion sensitivity) as PDF, SVG and
 300 dpi PNG, with a CSV of comparison values. These exports and diagnostic
 files are generated locally and excluded from version control; rerun the
 notebooks to recreate them. The [plotting guide](plotting.md)
@@ -16,7 +17,7 @@ estimates without confidence intervals; the post-period shading denotes time.
 
 ## Literature annotations
 
-All twelve figures carry a source annotation, independent of the numerical
+The twelve reference/comparison figures carry a source annotation, independent of the numerical
 validation targets below. Values retain the precision and interpretation of
 their sources:
 
@@ -177,10 +178,12 @@ Applying SCUL, ISC or 2SISC to a classic aggregate dataset is a new
 application. It does not reproduce the original SCUL scanner-data study,
 the Vagni–Breen motherhood study, or costofcare's survey analysis. The original
 data access and case construction are not supplied by this repository.
-`IndividualSC` uses each case's full eligible pool; `TwoStageIndividualSC`
-adds nearest-neighbor screening before the same weight fit. Both appear
-separately in every comparison notebook. MSCMT now performs the original nested predictor-weight fitting, with
-50 donor resamples in the notebooks. The original survey-specific variables,
+`IndividualSC` uses each case's full eligible pool with MSCMT and 50 donor
+resamples. Default `TwoStageIndividualSC` follows the care authors' raw
+nearest-neighbor screen and temporal-mean predictor fit in pysyncon, with no
+donor resampling. Both appear separately in every comparison notebook.
+The earlier screened MSCMT variant remains explicitly available; it is not the
+default two-stage pipeline. The original survey-specific variables,
 eligibility rules and microdata are still required to reproduce those
 studies' empirical estimates; no invented targets are assigned to them.
 
@@ -189,8 +192,10 @@ studies' empirical estimates; no invented targets are assigned to them.
 
 The empirical notebooks now estimate pysyncon SCM predictor importance, retain
 all pre-outcome lags, and run all ten SyntheticControlMethods starts. SCUL uses
-the original fold-specific glmnet paths and median penalty; ISC and 2SISC use
-MSCMT and 50 donor resamples. Original SDID placebo inference uses 200 refits.
+the original fold-specific glmnet paths and median penalty; ISC uses
+MSCMT and 50 donor resamples. Default 2SISC uses the authors' nested
+mean-predictor fit without donor resampling. Original SDID placebo inference
+uses 200 refits.
 Numerical solver recovery is documented in the backend guide; it changes no
 statistical objective and records each optimizer attempt.
 
@@ -205,3 +210,16 @@ figure annotations. Runtime, solver diagnostics, and SDID resampling records
 are exported locally alongside the figures. No archived software-output files
 are required to run the examples. Floating-point libraries and R package versions are recorded;
 algorithmic parity does not imply bitwise equality across arbitrary machines.
+
+The new evaluation sections compare eight candidates on common withheld
+pretreatment blocks, including three 2SISC donor counts, then refit the
+validation-selected candidate. A separate sensitivity exercise removes every
+donor in turn for outcome SCM, 2SISC and SDID. These are new analyses, not
+published numerical targets. See the [evaluation guide](evaluation.md) for
+masking, complete-fit budgets, scoring and interpretation limits.
+
+Basque, California and Germany each supply only two held-out observations
+under the common folds allowed by these reference SCUL settings. These short
+comparisons illustrate the workflow rather than establish a reliable ranking.
+Some California/Germany SDID validation fits reach the original iteration cap;
+the warnings and fit metadata remain visible, including when SDID is selected.

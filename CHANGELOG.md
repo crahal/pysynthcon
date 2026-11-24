@@ -5,6 +5,28 @@ versioning; the API may evolve during the 0.x research releases.
 
 ## [Unreleased]
 
+### Comparative research workflows
+
+- Add common expanding-window pretreatment validation across estimator
+  families and tuning candidates, masking held-out treated outcomes and
+  excluding all actual post-treatment rows. Preserve fold predictions,
+  pooled scoring, solver diagnostics and fresh estimator instances.
+- Add validation-based specification selection and full-panel refitting,
+  including prespecified 2SISC neighbor grids. Document the optimistic selected
+  score and absence of post-selection inference guarantees.
+- Add complete donor-deletion and named-group exclusion refits, with baseline
+  paths, ATT changes, sign reversals and diagnostic tables. Rerun 2SISC
+  screening within every eligible pool; retain zero- and negative-weight donors.
+- Add publication plots for validation and donor sensitivity, and demonstrate
+  both workflows in all four empirical notebooks.
+- Credit Petrillo et al. (2025) for two-stage ISC. Make the authors' core Python
+  specification the 2SISC default: raw nearest-neighbor screening followed by
+  temporal-mean predictor SCM, without donor resampling. Preserve the earlier
+  variant through `backend="mscmt", n_bootstrap=50`. Document the source's
+  treated-inclusive neighbor-count convention and study-specific limitations.
+- Document differentiation from pysyncon and related tools, crediting existing
+  methods and diagnostics without claiming new causal identification.
+
 ### Audit corrections
 
 - Correct Basque eligibility to 16 regional donors and reproduce paper Table 3
@@ -50,7 +72,8 @@ versioning; the API may evolve during the 0.x research releases.
   summary values, sample compatibility, font export and physical dimensions.
 - Explicit `TwoStageIndividualSC` estimator, labelled **Two-Stage Individual
   Synthetic Control (2SISC)**: nearest-neighbor screening on pretreatment
-  features, followed by the original ISC procedure within that group.
+  features, followed by the authors' mean-predictor fit within that group;
+  the separate MSCMT/resampling variant remains available explicitly.
 - Separate ISC and 2SISC rows in all four executed empirical notebooks,
   bringing each comparison to twelve interfaces.
 - Donor-selection metadata and analytic checks for full-pool equivalence,
@@ -66,8 +89,9 @@ versioning; the API may evolve during the 0.x research releases.
   plan require the separately supplied bundle. GitHub CI runs Python checks;
   original-R integration remains available locally.
 - SCUL defaults to the original R `lambda.median` procedure with fold-specific
-  glmnet paths. ISC and 2SISC default to MSCMT and 50 donor resamples.
-  R dependencies are now required for these defaults; the previous native
+  glmnet paths. ISC defaults to MSCMT and 50 donor resamples; the explicit
+  MSCMT variant of 2SISC retains that workflow.
+  R dependencies are required for these fits; the previous native
   approximations require explicit selection.
 - pysyncon SCM estimates predictor importance instead of injecting fixed V.
   SyntheticControlMethods uses all pre-outcome lags and all ten original starts.
@@ -92,7 +116,8 @@ versioning; the API may evolve during the 0.x research releases.
   `IndividualSC(n_neighbors=k)` with `TwoStageIndividualSC(n_neighbors=k)`.
 - Both individual estimators take keyword-only options and return method
   labels `ISC` and `2SISC`. Donor resampling remains a conditional sensitivity
-  diagnostic; 2SISC keeps its stage-one donor group fixed during resampling.
+  diagnostic; the MSCMT variant of 2SISC keeps its stage-one donor group fixed
+  during resampling.
 
 ## [0.1.0] — 2026-11-23
 
