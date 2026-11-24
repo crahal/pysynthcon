@@ -189,9 +189,12 @@ fig, axes = plot_comparison(fits, references=[reference], reference_style="strip
 ```
 
 The source remains at its printed precision. `precision` controls the display
-of the reproduced result and difference; the table retains full numeric
-precision. For an approximate headline, set `approximate=True`; the source
-and difference are both marked `≈`. Differences from rounded or approximate
+of the reproduced result and difference. Exact agreement displays an unsigned
+zero. A nonzero difference smaller than one unit of the displayed precision
+appears as a bound, for example `|Δ| < 0.0001`. The table retains the full
+numeric `difference` alongside the figure's `difference_label`. For an
+approximate headline, set `approximate=True` to mark the source and displayed
+point differences with `≈`. Differences from rounded or approximate
 headlines are descriptive, not optimization errors or replication tolerances.
 
 A hollow ochre diamond identifies a compatible source mean on the matching

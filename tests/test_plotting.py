@@ -429,11 +429,11 @@ def test_paired_reference_strip_exports_signed_differences_without_overlaps(tmp_
         "+0.200",
         "≈ 30",
         " pp",
-        "+0.000",
+        "|Δ| &lt; 0.001",
         "https://example.org/paper",
     ]:
         assert label in svg
-    assert "−0.000" not in svg
+    assert "−0.000" not in svg and "+0.000" not in svg
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
     strip, heading, headings, rows = fig._pysynth_reference_layout
@@ -634,3 +634,23 @@ def test_descriptive_headline_is_unpaired_in_both_layouts():
     strip, _ = plot_comparison({"Model": fit}, references=[ref], reference_style="strip")
     assert any(artist.get_text() == "—" for artist in strip._pysynth_reference_layout[0].texts)
     assert ref.difference is None
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (2.00001, "|Δ| < 0.001"),
+        (1.99999, "|Δ| < 0.001"),
+        (2.0, "Δ 0.000"),
+        (1.8, "Δ +0.200"),
+        (2.2, "Δ −0.200"),
+    ],
+)
+def test_direct_reference_labels_and_csv_preserve_small_discrepancies(source, expected):
+    fit = example(pd.Index([2000, 2001, 2004, 2010]))
+    ref = matched_reference(fit, reference=source, precision=3)
+    _, axes = plot_comparison({"SCM": fit}, references=[ref])
+    assert any(expected in artist.get_text() for artist in axes[0].texts)
+    table = reference_comparison_table([ref])
+    assert table.at[0, "difference_label"] == expected
+    assert table.at[0, "difference"] == 2.0 - source

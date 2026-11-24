@@ -157,6 +157,7 @@ def reference_comparison_table(references: Sequence[ReferenceComparison]) -> pd.
                 "reference": ref.reference,
                 "reproduced": ref.reproduced,
                 "difference": ref.difference,
+                "difference_label": _reference_difference(ref) if ref.comparable else None,
                 "units": ref.units,
                 "difference_units": (
                     ("percentage points" if ref.statistic == "mean_percent_effect" else ref.units)
@@ -207,6 +208,19 @@ def _reference_number(value, precision, *, signed=False):
         if signed
         else f"{value:,.{precision}f}".replace("-", "−")
     )
+
+
+def _reference_difference(ref, *, symbol=True):
+    """Format a comparable discrepancy without rounding a nonzero value to zero."""
+    value = ref.difference
+    unit = " pp" if ref.statistic == "mean_percent_effect" else ""
+    resolution = 10.0 ** (-ref.precision)
+    if 0 < abs(value) < resolution:
+        return f"|Δ| < {_reference_number(resolution, ref.precision)}{unit}"
+    label = "Δ " if symbol else ""
+    if ref.approximate:
+        label += "≈ "
+    return label + _reference_number(value, ref.precision, signed=value != 0) + unit
 
 
 def _matched_references(references, estimate, *, full_window=False):
@@ -285,17 +299,16 @@ def _reference_text(ref, number, *, compact=False):
     }.get(ref.source_label, ref.source_label)
     prefix = "≈ " if ref.approximate else ""
     unit = "%" if ref.statistic == "mean_percent_effect" else ""
-    delta_unit = " pp" if unit else ""
     reported = prefix + _reference_number(ref.reference, ref.reference_precision) + unit
     reproduced = _reference_number(ref.reproduced, ref.precision) + unit
     window = ref.window_label or f"{ref.window[0]}–{ref.window[1]}"
     if not ref.comparable:
         return f"{source} {reported} [{number}]\n{window} mean {reproduced}\n{ref.units}"
-    difference = prefix + _reference_number(ref.difference, ref.precision, signed=True) + delta_unit
+    difference = _reference_difference(ref)
     if compact:
-        return f"{source} {reported} · Δ {difference} [{number}]"
+        return f"{source} {reported} · {difference} [{number}]"
     scale = f"\n{ref.units}" if unit else ""
-    return f"{source} {reported} · fit {reproduced}\n{window} · Δ {difference} [{number}]{scale}"
+    return f"{source} {reported} · fit {reproduced}\n{window} · {difference} [{number}]{scale}"
 
 
 def _reference_lines(ref):
@@ -915,11 +928,7 @@ def _reference_strip(fig, cell, references):
         values = [
             prefix + _reference_number(ref.reference, ref.reference_precision),
             _reference_number(ref.reproduced, ref.precision),
-            prefix
-            + _reference_number(ref.difference, ref.precision, signed=True)
-            + (" pp" if ref.statistic == "mean_percent_effect" else "")
-            if ref.comparable
-            else "—",
+            _reference_difference(ref, symbol=False) if ref.comparable else "—",
         ]
         value_artists = [
             text(x, value, size=9, align="right", color=color, weight="semibold")
