@@ -49,7 +49,7 @@ FIGURE_DETAILS = {
         "onset": "1970",
         "reference": "Historical SCM counterfactual",
         "reference_note": "Historical predictor SCM. Numerical check: 1975–1997; common comparison: 1970–1997. Shading starts in 1970.",
-        "comparison_note": "Paper headline: about 10% GDP loss, 1980–1997. Original-R numerical check: mean GDP gap, 1975–1997.",
+        "comparison_note": "The full post-treatment mean covers 1970–1997.",
     },
     "germany": {
         "case": "German reunification",
