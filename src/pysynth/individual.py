@@ -1,6 +1,7 @@
 """Individual synthetic controls and event-time aggregation."""
 
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import ClassVar, Mapping
 
 import numpy as np
@@ -67,9 +68,10 @@ class IndividualSC:
     ) -> Estimate:
         """Fit one case using all pretreatment observations.
 
-        For MSCMT, ``predictors`` maps names to n_pre-by-units arrays in Panel
-        order. Each series is one predictor-weight group, with no temporal
-        aggregation. The outcome group is always included. For fixed_metric,
+        ``predictors`` maps names to n_pre-by-units arrays in Panel order.
+        MSCMT uses each series as one predictor-weight group without temporal
+        aggregation; 2SISC's pysyncon backend matches their temporal means.
+        The outcome group is always included. For fixed_metric,
         ``features`` replaces the outcome design with a rows-by-units array.
         2SISC screens on the stacked, unscaled pretreatment design; scale
         features explicitly when units differ. Post outcomes never enter it.
@@ -275,25 +277,144 @@ class IndividualSC:
 
 @dataclass(kw_only=True)
 class TwoStageIndividualSC(IndividualSC):
-    """Two-Stage Individual Synthetic Control (2SISC).
+    """Two-Stage Individual Synthetic Control (Petrillo et al., 2025).
 
     Stage one selects up to ``n_neighbors`` eligible donors by squared
-    Euclidean distance to the treated individual's pretreatment outcomes,
-    or to caller-supplied pretreatment features. Stage two fits ISC's convex
-    weights within that selected group, using the same matching features.
-    This is nearest-neighbor screening, not k-means clustering.
+    Euclidean distance on raw, stacked pretreatment outcomes and named
+    covariate series. The default ``backend='pysyncon'`` follows the authors'
+    Python fitting specification: nested SCM matches each series' temporal
+    mean, selecting predictor importance against all pretreatment outcomes.
+    It performs no within-donor resampling (``n_bootstrap=0``).
 
     ``n_neighbors`` counts donors, excluding the treated individual. Ties
     follow Panel unit order. When k exceeds the available donor count, all
-    eligible donors are used. Selected donors retain their original order,
-    making the full-pool fit identical to vanilla ISC.
+    eligible donors are used. The published code's KDTree query includes the
+    treated case in ``k_n``; absent ties, its query needs ``k_n=k+1`` for k
+    donors. Caller-supplied panels determine eligibility and time windows.
 
-    Donor resampling, when requested, is conditional on the stage-one pool;
-    it does not rerun selection or estimate selection uncertainty.
+    ``options`` passes optimizer settings to the checked PySyncon adapter.
+    Explicit ``backend='mscmt', n_bootstrap=50`` retains PySynth's earlier
+    variant: screen donors, then run ISC's time-series predictor groups and
+    donor resampling. This variant is distinct from the authors' two-stage
+    Python pipeline. ``backend='fixed_metric'`` remains a separate adaptation.
     """
 
+    backend: str = "pysyncon"
+    n_bootstrap: int = 0
     n_neighbors: int = 10
+    options: dict = field(default_factory=dict)
     _method: ClassVar[str] = "2SISC"
+
+    def _fit_case(self, panel, *, features=None, predictors=None, sampling_state=None):
+        self.backend_ = None
+        if self.backend not in {"pysyncon", "mscmt", "fixed_metric"}:
+            raise ValueError("backend must be 'pysyncon', 'mscmt' or 'fixed_metric'")
+        if self.backend != "pysyncon":
+            if self.options:
+                raise ValueError("options is only available with backend='pysyncon'")
+            return super()._fit_case(
+                panel, features=features, predictors=predictors, sampling_state=sampling_state
+            )
+        if panel.n_treated != 1:
+            raise ValueError("Use fit_many for multiple individual treated cases")
+        if (
+            isinstance(self.n_bootstrap, (bool, np.bool_))
+            or not isinstance(self.n_bootstrap, (int, np.integer))
+            or self.n_bootstrap != 0
+        ):
+            raise ValueError(
+                "backend='pysyncon' requires n_bootstrap=0; the authors' two-stage "
+                "fit does not resample donors. Use backend='mscmt' explicitly for that variant."
+            )
+        if features is not None:
+            raise ValueError(
+                "The published two-stage fit requires named time-series predictors; "
+                "features is only available with backend='fixed_metric'."
+            )
+        groups = {}
+        for name, value in (predictors or {}).items():
+            if not isinstance(name, str) or not name or name == "outcome":
+                raise ValueError("Predictor names must be nonempty strings other than 'outcome'")
+            matrix = np.asarray(value, dtype=float)
+            if matrix.shape != (panel.n_pre, panel.y.shape[1]) or not np.isfinite(matrix).all():
+                raise ValueError(
+                    "Each predictor must be a finite n_pre-by-units matrix in Panel order"
+                )
+            groups[name] = matrix
+        design = np.vstack([panel.y[: panel.n_pre], *groups.values()])
+        chosen, selection = self._select_donors(design[:, : panel.n_control], design[:, -1])
+        predictor_order = sorted(["outcome", *groups])
+        full = np.zeros(panel.n_control)
+        metadata = {
+            **selection,
+            "backend": "pysyncon_mean_predictors",
+            "reference_commit": "6e7537d67b86fb08709d35b035c9ee9f45e83e93",
+            "reference_path": "src/utils.py:sc_b",
+            "method_reference": "Petrillo et al. (2025), SERPS 2025004, section 2.3",
+            "selected_donors": [panel.units[i] for i in chosen],
+            "n_eligible_donors": panel.n_control,
+            "n_selected_donors": len(chosen),
+            "neighbor_count_convention": "donors_excluding_treated",
+            "matching_features": "raw_stacked_pre_treatment_series",
+            "predictor_groups": predictor_order,
+            "predictor_aggregation": "mean",
+            "n_bootstrap": 0,
+            "bootstrap_atts": [],
+        }
+        if len(chosen) == 1:
+            # The only feasible simplex weight is one, independent of V.
+            full[chosen[0]] = 1.0
+            metadata["optimization"] = {"solution": "single_donor_simplex"}
+        else:
+            from .backends import PySyncon, _canonical_frame, _require
+
+            upstream = _require("pysyncon")
+            columns = np.r_[chosen, panel.n_control]
+            # Internal integer labels avoid upstream sorting/type restrictions;
+            # returned weights and paths retain the original Panel labels.
+            reduced = Panel(panel.y[:, columns], len(chosen), panel.n_pre)
+            frame = _canonical_frame(reduced)
+            predictor_columns = {"outcome": "outcome"}
+            for i, (name, matrix) in enumerate(groups.items()):
+                column = f"covariate_{i}"
+                values = np.full_like(reduced.y, np.nan)
+                values[: panel.n_pre] = matrix[:, columns]
+                frame[column] = values.T.ravel()
+                predictor_columns[name] = column
+            dataprep = upstream.Dataprep(
+                foo=frame,
+                # The authors' pivoted feature columns are sorted by name.
+                predictors=[predictor_columns[name] for name in predictor_order],
+                predictors_op="mean",
+                dependent="outcome",
+                unit_variable="unit",
+                time_variable="time",
+                treatment_identifier=reduced.n_control,
+                controls_identifier=list(range(reduced.n_control)),
+                time_predictors_prior=list(range(reduced.n_pre)),
+                time_optimize_ssr=list(range(reduced.n_pre)),
+            )
+            means = np.vstack(
+                [panel.y[: panel.n_pre, columns].mean(axis=0)]
+                + [matrix[:, columns].mean(axis=0) for matrix in groups.values()]
+            )
+            constant = np.flatnonzero(np.ptp(means, axis=1) == 0)
+            if len(constant):
+                names = ["outcome", *groups]
+                raise ValueError(
+                    "The mean-predictor specification has constant predictors across the "
+                    f"selected units: {[names[i] for i in constant]}. "
+                    "Upstream variance scaling is undefined; revise the explicit specification."
+                )
+            # Keep recorded settings independent of later caller edits,
+            # including nested optimizer dictionaries and custom V arrays.
+            adapter = PySyncon("synth", dataprep=dataprep, options=deepcopy(self.options))
+            fitted = adapter.fit(reduced)
+            self.backend_ = adapter.backend_
+            full[chosen] = fitted.weights.to_numpy()
+            metadata.update(fitted.metadata)
+            metadata["predictor_weights"] = np.asarray(self.backend_.V).tolist()
+        return make_estimate(panel, self._method, full, metadata=metadata), None
 
     def _select_donors(self, x: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, dict]:
         if (

@@ -156,9 +156,12 @@ additional procedures on their native fitted object; consult their assumptions
 and documentation.
 
 `IndividualSC(n_bootstrap=..., random_state=...)` and
-`TwoStageIndividualSC(n_neighbors=..., n_bootstrap=..., random_state=...)`
+`TwoStageIndividualSC(backend="mscmt", n_neighbors=..., n_bootstrap=..., random_state=...)`
 return donor-resampled ATT draws in metadata and average the fitted paths.
 ISC resamples its full eligible pool; 2SISC resamples the selected nearest
 donors without repeating screening. Those draws measure conditional donor
 sensitivity and omit selection uncertainty. They are not confidence
 intervals, and shared donors can induce dependence between individual fits.
+Default author-style 2SISC performs no within-donor resampling. The care paper's
+between-person bootstrap is a separate population-inference procedure and is
+not supplied by these donor-sensitivity draws.

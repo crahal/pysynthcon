@@ -71,16 +71,19 @@ weight totals are always returned.
 For one case, use `fit(panel, predictors={"age": age, "education": education})`.
 Each array has `panel.n_pre` rows and columns in `panel.units` order. MSCMT
 uses each series as a predictor group, alongside the pretreatment outcome,
-and learns predictor importance using its original optimization. 2SISC screens
-on the stacked, unscaled predictor series; scale disparate variables deliberately
-before screening. Only pretreatment measurements should be supplied.
+and learns predictor importance using its original optimization. Default 2SISC
+screens on the stacked, unscaled predictor series, then matches their temporal
+means through the authors' pysyncon specification. Scaling disparate variables
+is an explicit departure from the raw-distance reference. Only pretreatment
+measurements should be supplied.
 
 For several cases, pass a mapping of case identifiers to these predictor
 dictionaries through `fit_many(panels, predictors=case_predictors)`. Its keys
 must match the panel mapping. The earlier generic `features` matrix remains
 available only with explicitly selected `backend="fixed_metric"`; that
 adaptation is not the default original ISC procedure. Install the
-[R reference dependencies](reference_backends.md) before using the default.
+[R reference dependencies](reference_backends.md) for default ISC; default
+2SISC requires the Python `backends` extra instead.
 
 ## Academic downloads
 

@@ -144,12 +144,14 @@ def test_2sisc_full_pool_equals_original_isc_and_ignores_post_outcomes():
     reference = json.loads((FIXTURES / "reference_backends_r.json").read_text())["isc"]
     panel = Panel(reference["y"], 6, 20)
     full = IndividualSC().fit(panel)
-    staged = TwoStageIndividualSC(n_neighbors=6).fit(panel)
+    staged = TwoStageIndividualSC(backend="mscmt", n_bootstrap=50, n_neighbors=6).fit(panel)
     np.testing.assert_array_equal(full.weights, staged.weights)
     assert full.metadata["bootstrap_donor_indices"] == staged.metadata["bootstrap_donor_indices"]
     changed = panel.y.copy()
     changed[20:, :] *= -20
-    second = TwoStageIndividualSC(n_neighbors=6).fit(Panel(changed, 6, 20))
+    second = TwoStageIndividualSC(backend="mscmt", n_bootstrap=50, n_neighbors=6).fit(
+        Panel(changed, 6, 20)
+    )
     np.testing.assert_array_equal(staged.weights, second.weights)
 
 
@@ -181,7 +183,9 @@ def test_isc_rejects_failed_wnnls_iterate_and_recovers_exact_convex_fit():
         assert repair["original_status"] == "error in wnnls"
 
 
-@pytest.mark.parametrize("model", [IndividualSC(), TwoStageIndividualSC(n_neighbors=6)])
+@pytest.mark.parametrize(
+    "model", [IndividualSC(), TwoStageIndividualSC(backend="mscmt", n_bootstrap=50, n_neighbors=6)]
+)
 def test_isc_fit_many_matches_original_parallel_sampling_stream(model):
     reference = json.loads((FIXTURES / "reference_backends_r.json").read_text())
     original = reference["isc"]

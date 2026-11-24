@@ -127,25 +127,57 @@ replication. Each standalone `fit` starts afresh from `random_state`.
 
 ## Two-Stage Individual Synthetic Control (2SISC)
 
-`TwoStageIndividualSC(n_neighbors=10)` adds the requested first stage:
+`TwoStageIndividualSC(n_neighbors=10)` follows the two-stage approach of
+[Petrillo et al. (2025), section 2.3](https://eprints.whiterose.ac.uk/id/eprint/224118/1/Binder2025004.pdf).
+The default `backend="pysyncon", n_bootstrap=0` follows the core fitting
+specification of the authors' [Python `sc_b` function](https://github.com/centre-for-care/costofcare/blob/6e7537d67b86fb08709d35b035c9ee9f45e83e93/src/utils.py):
 
-1. Select up to $k$ eligible donors with the smallest squared Euclidean
-   distance to the treated pretreatment design, stacking the outcome and
-   supplied covariate series.
-2. Run the **same original ISC/MSCMT procedure**, including all 50 donor
-   resamples, within that selected group. Return zero weights for excluded
-   donors.
+1. Select up to $k$ eligible donors by Euclidean distance on the raw, stacked
+   pretreatment outcome and named covariate series. The ranking uses every
+   supplied pretreatment observation, without temporal averaging or scaling.
+2. Fit nested SCM within that pool, using each series' **pretreatment mean**
+   as a predictor and all pretreatment outcomes for the outer fitting loss.
+   PySyncon supplies its original predictor scaling and optimizer defaults,
+   with the checked numerical recovery described in the backend guide.
+3. Return weights in the original donor order, with zeros for excluded donors.
 
-This is nearest-neighbor screening. Distances are unscaled, so measurement
-units matter; choose scaling and $k$ before inspecting effects. Ties follow
-Panel order. If all donors are retained, 2SISC and ISC agree, including donor
-resamples under the same seed. With one selected donor, the simplex contains
-only weight one; the adapter handles that exact solution because MSCMT
-requires at least two control columns.
+`predictors` accepts the same named, `n_pre`-by-units matrices as ISC. The
+outcome is always included. `options` passes explicit settings to
+`pysyncon.Synth.fit`; `backend_` exposes the fitted object. A constant predictor
+mean across selected units makes upstream variance scaling undefined; the fit
+raises rather than silently changing the specified predictors. With one donor,
+the simplex fixes its weight at one and needs no optimizer.
 
-2SISC is a requested extension, not a published method with a canonical paper
-estimate. Its resampling is conditional on the screened pool and does not
-rerun screening or estimate selection uncertainty.
+With outcomes alone, stage two has just one mean predictor. Multiple donor
+combinations can match that mean, so a close mean match need not reproduce the
+pretreatment path or identify unique donor weights. This is a limitation of
+that reduced specification; the canonical aggregate examples do not supply
+the care study's additional covariates.
+
+PySynth counts actual donors in `n_neighbors`. The authors' KDTree query counts
+the treated case in `k_n`, normally leaving `k_n - 1` donors. Away from distance
+ties, query `k_n=k+1` corresponds to PySynth's `k` donors when `k` is smaller
+than the eligible donor count. The source also caps `k_n` at that count;
+PySynth permits retaining every eligible donor. Ties here follow Panel order. Panel construction determines
+eligibility and the observed time window; the study's survey filters and
+historical event window are not applied automatically.
+
+The default fit performs **no within-donor resampling**. The care paper's
+population bootstrap samples individual effect estimates; that is a different
+procedure and is not implemented here. To retain the earlier PySynth variant,
+request it explicitly:
+
+```python
+legacy_variant = TwoStageIndividualSC(
+    n_neighbors=10, backend="mscmt", n_bootstrap=50,
+)
+```
+
+That variant runs the original ISC time-series predictor groups and 50 donor
+resamples within the screened pool. With every donor retained, it agrees with
+`IndividualSC()` under the same seed. Its resampling is conditional on the
+screened pool and does not estimate selection uncertainty. It is separate from
+the authors' mean-predictor two-stage fitting pipeline.
 
 ### Scope and explicit alternatives
 

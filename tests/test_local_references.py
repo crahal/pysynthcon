@@ -54,7 +54,11 @@ def test_incomplete_reference_directory_is_rejected(checkout, monkeypatch):
 
 @pytest.mark.parametrize(
     "model",
-    [SCUL(initial_window=8, horizon=2), IndividualSC(), TwoStageIndividualSC()],
+    [
+        SCUL(initial_window=8, horizon=2),
+        IndividualSC(),
+        TwoStageIndividualSC(backend="mscmt", n_bootstrap=50),
+    ],
 )
 def test_missing_local_resources_never_fall_back(checkout, monkeypatch, panel, model):
     monkeypatch.setattr(_r.subprocess, "run", lambda *a, **k: pytest.fail("Must not execute R"))

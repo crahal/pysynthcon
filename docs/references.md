@@ -35,6 +35,21 @@
 9. Amjad, M., Shah, D. and Shen, D. (2018). Robust Synthetic Control.
    *Journal of Machine Learning Research*, 19(22), 1–51.
    [Paper](https://jmlr.org/papers/v19/17-777.html).
+10. Petrillo, M., Valdenegro, D., Rahal, C., Zhang, Y., Pryce, G. and Bennett,
+    M. R. (2025). Estimating the Cost of Informal Care with a Novel Two-Stage
+    Approach to Individual Synthetic Control. *Sheffield Economic Research
+    Paper Series*, 2025004.
+    [Paper](https://eprints.whiterose.ac.uk/id/eprint/224118/1/Binder2025004.pdf),
+    [code](https://github.com/centre-for-care/costofcare).
+11. Rho, S., Tang, A., Bergam, N., Cummings, R. and Misra, V. (2025).
+    ClusterSC: Advancing Synthetic Control with Donor Selection.
+    *Proceedings of AISTATS*, PMLR 258, 109–117.
+    [Paper and software](https://proceedings.mlr.press/v258/rho25a.html).
+
+The two-stage approach is attributed to Petrillo et al.; the default follows
+their Python mean-predictor fitting specification. An explicitly selected
+MSCMT/resampling variant remains available.
+ClusterSC is related work, not an estimator implemented by this release.
 
 Software foundations: [pysyncon](https://github.com/sdfordham/pysyncon), by
 Stiofán Fordham and contributors; [SyntheticControlMethods](https://github.com/OscarEngelbrektson/SyntheticControlMethods),
