@@ -1,6 +1,14 @@
 """Synthetic control methods with a shared, explicit panel interface."""
 
-from .backends import SCM, PySyncon
+from .backends import (
+    SCM,
+    AugmentedSyntheticControl,
+    DifferencedSyntheticControl,
+    PenalizedSyntheticControl,
+    PredictorSyntheticControl,
+    PySyncon,
+    RobustSyntheticControl,
+)
 from .classic import SyntheticControl
 from .evaluation_plotting import plot_backtest, plot_donor_sensitivity
 from .individual import IndividualEstimate, IndividualSC, TwoStageIndividualSC
@@ -29,6 +37,11 @@ __all__ = [
     "Estimate",
     "Estimator",
     "SyntheticControl",
+    "PredictorSyntheticControl",
+    "AugmentedSyntheticControl",
+    "DifferencedSyntheticControl",
+    "PenalizedSyntheticControl",
+    "RobustSyntheticControl",
     "SCUL",
     "IndividualSC",
     "TwoStageIndividualSC",

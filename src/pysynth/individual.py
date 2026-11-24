@@ -1,6 +1,5 @@
 """Individual synthetic controls and event-time aggregation."""
 
-from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import ClassVar, Mapping
 
@@ -292,7 +291,7 @@ class TwoStageIndividualSC(IndividualSC):
     treated case in ``k_n``; absent ties, its query needs ``k_n=k+1`` for k
     donors. Caller-supplied panels determine eligibility and time windows.
 
-    ``options`` passes optimizer settings to the checked PySyncon adapter.
+    ``options`` passes optimizer settings to the checked predictor-weighted fit.
     Explicit ``backend='mscmt', n_bootstrap=50`` retains PySynthCon's earlier
     variant: screen donors, then run ISC's time-series predictor groups and
     donor resampling. This variant is distinct from the authors' two-stage
@@ -406,9 +405,7 @@ class TwoStageIndividualSC(IndividualSC):
                     f"selected units: {[names[i] for i in constant]}. "
                     "Upstream variance scaling is undefined; revise the explicit specification."
                 )
-            # Keep recorded settings independent of later caller edits,
-            # including nested optimizer dictionaries and custom V arrays.
-            adapter = PySyncon("synth", dataprep=dataprep, options=deepcopy(self.options))
+            adapter = PySyncon("synth", dataprep=dataprep, options=self.options)
             fitted = adapter.fit(reduced)
             self.backend_ = adapter.backend_
             full[chosen] = fitted.weights.to_numpy()

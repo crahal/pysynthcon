@@ -1,7 +1,9 @@
-"""Optional adapters to pysyncon and SyntheticControlMethods."""
+"""Published synthetic-control estimators and compatibility adapters."""
 
 import inspect
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from copy import deepcopy
+from dataclasses import KW_ONLY, dataclass, field
 from importlib.metadata import version
 from types import FunctionType, MethodType
 from typing import Any
@@ -249,8 +251,8 @@ def _fit_augmented(model, dataprep, options):
         )
 
 
-def _fit_robust(model, dataprep, panel, *, lambda_, threshold=None, sv_count=None):
-    """Amjad--Shah--Shen Algorithm 1 on the complete, labelled Panel sample."""
+def _robust_weights(donors, treated_pre, *, lambda_, threshold=None, sv_count=None):
+    """Algorithm 1 of Amjad, Shah and Shen (2018) for a complete donor matrix."""
     if not np.isfinite(lambda_) or lambda_ < 0:
         raise ValueError("Robust SCM lambda_ must be finite and nonnegative")
     if (threshold is None) == (sv_count is None):
@@ -258,44 +260,366 @@ def _fit_robust(model, dataprep, panel, *, lambda_, threshold=None, sv_count=Non
     if threshold is not None and (not np.isfinite(threshold) or threshold < 0):
         raise ValueError("Robust SCM threshold must be finite and nonnegative")
     if sv_count is not None and (
-        isinstance(sv_count, bool)
+        isinstance(sv_count, (bool, np.bool_))
         or not isinstance(sv_count, (int, np.integer))
-        or not 1 <= sv_count <= min(panel.y.shape[0], panel.n_control)
+        or not 1 <= sv_count <= min(donors.shape)
     ):
         raise ValueError("Robust SCM sv_count must be a positive feasible rank")
-    # Canonical integer dates are used only by the automatically built Dataprep.
-    periods = list(dataprep.time_optimize_ssr)
-    all_periods = sorted(dataprep.foo[dataprep.time_variable].unique())
-    if len(all_periods) != len(panel.times):
-        all_periods = list(panel.times)
-    donors, treated = dataprep.make_outcome_mats(time_period=all_periods)
-    y = donors.to_numpy()
-    u, singular, vh = np.linalg.svd(y, full_matrices=False)
+    u, singular, vh = np.linalg.svd(donors, full_matrices=False)
     keep = singular >= threshold if threshold is not None else np.arange(len(singular)) < sv_count
-    # Panel rejects missing observations: an observed zero counts as observed.
+    # The observation fraction is one, including when a recorded outcome is zero.
     denoised = (u[:, keep] * singular[keep]) @ vh[keep]
-    pre = donors.index.get_indexer(periods)
-    if np.any(pre < 0):
-        raise ValueError("Robust SCM fitting periods are absent from the outcome matrix")
-    design = denoised[pre]
-    target = treated.loc[periods].to_numpy()
-    # An augmented least-squares solve is the ridge normal equation without
-    # squaring its condition number; lambda_=0 permits rank-deficient designs.
-    model.W = np.linalg.lstsq(
-        np.vstack([design, np.sqrt(lambda_) * np.eye(panel.n_control)]),
-        np.r_[target, np.zeros(panel.n_control)],
+    design = denoised[: len(treated_pre)]
+    # This least-squares form also handles rank deficiency at zero penalty.
+    weights = np.linalg.lstsq(
+        np.vstack([design, np.sqrt(lambda_) * np.eye(donors.shape[1])]),
+        np.r_[treated_pre, np.zeros(donors.shape[1])],
         rcond=None,
     )[0]
-    model.dataprep, model.W_names = dataprep, donors.columns
-    model.denoised_ = pd.DataFrame(denoised, index=donors.index, columns=donors.columns)
-    model.singular_values_ = singular
-    model.retained_rank_ = int(keep.sum())
-    return denoised @ model.W
+    return weights, denoised, singular, int(keep.sum())
 
 
 @dataclass
-class PySyncon:
-    """Adapt Synth, AugSynth, PenalizedSynth, or RobustSynth to a common result.
+class RobustSyntheticControl:
+    """Amjad, Shah and Shen's (2018) robust synthetic control, Algorithm 1.
+
+    Supply a nonnegative ridge penalty (the paper's eta) and either the
+    singular-value threshold (mu) or a retained rank. All donor periods enter
+    the SVD. Only pretreatment treated outcomes enter the ridge regression.
+    The fitted path uses the denoised donor trajectories for every period.
+
+    This implementation operates on complete panels. The observation fraction
+    in the paper's equation (9) is one. See the method paper at
+    https://jmlr.org/papers/v19/17-777.html.
+    """
+
+    lambda_: float
+    _: KW_ONLY
+    sv_count: int | None = None
+    threshold: float | None = None
+
+    def fit(self, panel: Panel) -> Estimate:
+        """Fit unconstrained donor weights and return the denoised counterfactual."""
+        if panel.n_treated != 1:
+            raise ValueError("Robust synthetic control requires one treated unit")
+        weights, denoised, singular, rank = _robust_weights(
+            panel.control,
+            panel.treated[: panel.n_pre],
+            lambda_=self.lambda_,
+            threshold=self.threshold,
+            sv_count=self.sv_count,
+        )
+        return make_estimate(
+            panel,
+            "Robust SCM",
+            weights,
+            counterfactual=denoised @ weights,
+            metadata={
+                "method_reference": "https://jmlr.org/papers/v19/17-777.html",
+                "denoised_prediction": True,
+                "observed_fraction": 1.0,
+                "retained_rank": rank,
+                "singular_values": singular.tolist(),
+                "options": {
+                    "lambda_": self.lambda_,
+                    "sv_count": self.sv_count,
+                    "threshold": self.threshold,
+                },
+            },
+        )
+
+
+def _window_positions(panel, windows):
+    """Map outcome-mean predictor windows from Panel time labels to internal rows."""
+    if isinstance(windows, (str, bytes)) or not pd.api.types.is_list_like(windows):
+        raise ValueError("predictor_windows must be a sequence of nonempty time-label sequences")
+    pre = panel.times[: panel.n_pre]
+    positions = []
+    for window in windows:
+        if isinstance(window, (str, bytes)) or not pd.api.types.is_list_like(window):
+            raise ValueError("Each predictor window must be a sequence of time labels")
+        labels = list(window)
+        rows = pre.get_indexer(labels)
+        if not labels or np.any(rows < 0) or len(set(rows)) != len(labels):
+            raise ValueError(
+                "Each predictor window must contain distinct observed pretreatment dates"
+            )
+        positions.append(rows.tolist())
+    if not positions:
+        raise ValueError("predictor_windows must contain at least one window")
+    return positions
+
+
+class _PredictorBackend:
+    def _fit(
+        self,
+        panel,
+        method,
+        label,
+        options,
+        dataprep,
+        allow_post_predictors=False,
+        predictor_windows=None,
+    ):
+        """Fit a checked predictor specification with an optional external implementation."""
+        self.backend_ = None
+        upstream = _require("pysyncon")
+        classes = {
+            "synth": upstream.Synth,
+            "augsynth": upstream.AugSynth,
+            "pensynth": upstream.PenalizedSynth,
+            "robust": upstream.RobustSynth,
+        }
+        if method not in classes:
+            raise ValueError(f"method must be one of {list(classes)}")
+        if panel.n_treated != 1:
+            raise ValueError("These upstream adapters require one treated unit")
+        options = deepcopy(options)
+        if method in {"augsynth", "pensynth"} and "lambda_" in options:
+            penalty = options["lambda_"]
+            if (method == "pensynth" and penalty is None) or (
+                penalty is not None and (not np.isfinite(penalty) or penalty < 0)
+            ):
+                raise ValueError("lambda_ must be finite and nonnegative")
+        if options.get("custom_V") is not None:
+            metric = np.asarray(options["custom_V"], dtype=float)
+            if (
+                metric.ndim != 1
+                or not np.isfinite(metric).all()
+                or np.any(metric < 0)
+                or not np.any(metric > 0)
+            ):
+                raise ValueError("custom_V must be a finite nonnegative vector with positive mass")
+        post_predictor_periods = []
+        if predictor_windows is not None and dataprep is not None:
+            raise ValueError("Choose either predictor_windows or dataprep")
+        if dataprep is None:
+            windows = (
+                [[t] for t in range(panel.n_pre)]
+                if predictor_windows is None
+                else _window_positions(panel, predictor_windows)
+            )
+            frame = _canonical_frame(panel)
+            dp = upstream.Dataprep(
+                foo=frame,
+                predictors=[],
+                predictors_op="mean",
+                dependent="outcome",
+                unit_variable="unit",
+                time_variable="time",
+                treatment_identifier=panel.n_control,
+                controls_identifier=list(range(panel.n_control)),
+                time_predictors_prior=list(range(panel.n_pre)),
+                time_optimize_ssr=list(range(panel.n_pre)),
+                special_predictors=[("outcome", window, "mean") for window in windows]
+                if method in {"synth", "pensynth"}
+                else None,
+            )
+            order = np.arange(panel.n_control)
+        else:
+            dp = dataprep
+            if (
+                dp.treatment_identifier != panel.units[-1]
+                or set(dp.controls_identifier) != set(panel.units[:-1])
+                or len(dp.controls_identifier) != panel.n_control
+            ):
+                raise ValueError("Dataprep units must match the Panel")
+            if list(dp.time_optimize_ssr) != list(panel.times[: panel.n_pre]):
+                raise ValueError("Dataprep fitting periods must equal Panel pre-periods")
+            predictor_periods = set(dp.time_predictors_prior) if dp.predictors else set()
+            for _, periods, _ in dp.special_predictors or []:
+                predictor_periods.update(periods)
+            if not predictor_periods <= set(panel.times):
+                raise ValueError("Dataprep predictor periods must be observed in the Panel")
+            post_predictor_periods = [
+                t for t in panel.times[panel.n_pre :] if t in predictor_periods
+            ]
+            if post_predictor_periods and not allow_post_predictors:
+                raise ValueError(
+                    "Dataprep predictors use post-treatment periods; historical replication "
+                    "requires explicit allow_post_predictors=True"
+                )
+            z0, z1 = dp.make_outcome_mats(time_period=list(panel.times))
+            if not np.array_equal(
+                z0.loc[:, list(panel.units[:-1])], panel.control
+            ) or not np.array_equal(z1, panel.treated):
+                raise ValueError("Dataprep outcomes must match the Panel")
+            order = np.array([list(dp.controls_identifier).index(u) for u in panel.units[:-1]])
+        if options.get("custom_V") is not None:
+            predictor_count = len(dp.predictors) + len(dp.special_predictors or [])
+            if len(metric) != predictor_count:
+                raise ValueError("custom_V must have one diagonal weight per predictor")
+        model = classes[method]()
+        _checked_upstream_optimizers(model, recover_outer="optim_options" not in options)
+        if method == "augsynth" and dataprep is None:
+            if "use_covariates" in inspect.signature(model.fit).parameters:
+                options.setdefault("use_covariates", False)
+        counterfactual = None
+        if method == "robust":
+            periods = list(panel.times) if dataprep is not None else list(range(len(panel.times)))
+            donors, treated = dp.make_outcome_mats(time_period=periods)
+            model.W, denoised, model.singular_values_, model.retained_rank_ = _robust_weights(
+                donors.to_numpy(), treated.to_numpy()[: panel.n_pre], **options
+            )
+            model.dataprep, model.W_names = dp, donors.columns
+            model.denoised_ = pd.DataFrame(denoised, index=donors.index, columns=donors.columns)
+            counterfactual = denoised @ model.W
+        elif method == "augsynth":
+            _fit_augmented(model, dp, options)
+        else:
+            model.fit(dataprep=dp, **options)
+        weights = np.asarray(model.W).reshape(-1)[order]
+        result = make_estimate(
+            panel,
+            label,
+            weights,
+            counterfactual=counterfactual,
+            metadata={
+                "backend_package": "pysyncon",
+                "backend_method": method,
+                "backend_version": version("pysyncon"),
+                "options": options,
+                "optimization": model.optimization_diagnostics_,
+                "post_predictor_periods": post_predictor_periods,
+                **(
+                    {"predictor_windows": [panel.times.take(w).tolist() for w in windows]}
+                    if predictor_windows is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "denoised_prediction": True,
+                        "observed_fraction": 1.0,
+                        "retained_rank": model.retained_rank_,
+                    }
+                    if method == "robust"
+                    else {}
+                ),
+            },
+        )
+        self.backend_ = model
+        return result
+
+
+@dataclass
+class PredictorSyntheticControl(_PredictorBackend):
+    """Predictor-weighted synthetic control.
+
+    Follows Abadie and Gardeazabal (2003) and Abadie, Diamond and Hainmueller (2010).
+
+    Donor weights balance predictors on the simplex. Predictor importance is
+    selected by pretreatment outcome fit unless a nonnegative diagonal metric
+    is supplied in ``custom_V``. Use ``predictor_windows`` for one mean outcome
+    per window of Panel time labels. By default each pretreatment outcome is
+    its own predictor. For other covariates, supply a labelled Dataprep.
+    """
+
+    dataprep: Any = None
+    _: KW_ONLY
+    predictor_windows: Sequence[Sequence[Any]] | None = None
+    custom_V: Sequence[float] | None = None
+    optim_method: str = "Nelder-Mead"
+    optim_initial: str = "equal"
+    optim_options: dict | None = None
+    allow_post_predictors: bool = False
+
+    def fit(self, panel: Panel) -> Estimate:
+        """Fit the specified predictor metric and simplex donor weights."""
+        options = {"optim_method": self.optim_method, "optim_initial": self.optim_initial}
+        if self.custom_V is not None:
+            options["custom_V"] = self.custom_V
+        if self.optim_options is not None:
+            options["optim_options"] = self.optim_options
+        result = self._fit(
+            panel,
+            "synth",
+            "Predictor SCM",
+            options,
+            self.dataprep,
+            self.allow_post_predictors,
+            self.predictor_windows,
+        )
+        result.metadata["method_reference"] = "https://doi.org/10.1198/jasa.2009.ap08746"
+        return result
+
+
+@dataclass
+class AugmentedSyntheticControl(_PredictorBackend):
+    """Ridge-augmented synthetic control of Ben-Michael, Feller and Rothstein (2021).
+
+    A ridge outcome model corrects imbalance remaining after the simplex fit.
+    ``lambda_=None`` selects the ridge penalty by pretreatment cross-validation.
+    The default fits outcome histories. A Dataprep can add covariates, either
+    balanced jointly or residualized before the ridge fit.
+    """
+
+    lambda_: float | None = None
+    _: KW_ONLY
+    dataprep: Any = None
+    use_covariates: bool | None = None
+    residualize: bool = False
+    allow_post_predictors: bool = False
+
+    def fit(self, panel: Panel) -> Estimate:
+        """Fit the ridge augmentation and return the bias-adjusted path."""
+        available = self.dataprep is not None and bool(
+            len(self.dataprep.predictors) or self.dataprep.special_predictors
+        )
+        covariates = available if self.use_covariates is None else self.use_covariates
+        if covariates and not available:
+            self.backend_ = None
+            raise ValueError("use_covariates=True requires covariates in dataprep")
+        options = {
+            "lambda_": self.lambda_,
+            "use_covariates": covariates,
+            "residualize": self.residualize,
+        }
+        result = self._fit(
+            panel,
+            "augsynth",
+            "Ridge-augmented SCM",
+            options,
+            self.dataprep,
+            self.allow_post_predictors,
+        )
+        result.metadata["method_reference"] = "https://doi.org/10.1080/01621459.2021.1929245"
+        result.metadata["ridge_penalty"] = float(self.backend_.lambda_)
+        return result
+
+
+@dataclass
+class PenalizedSyntheticControl(_PredictorBackend):
+    """Abadie and L'Hour's (2021) penalized SCM for one treated unit.
+
+    The nonnegative penalty multiplies the weighted sum of the individual
+    donor-to-treated squared predictor distances. The remaining loss is the
+    squared discrepancy of the synthetic predictor profile. The default
+    metric equally weights standardized predictors; ``custom_V`` provides
+    diagonal metric entries. Set the penalty explicitly in the units of
+    this objective.
+    """
+
+    lambda_: float
+    _: KW_ONLY
+    dataprep: Any = None
+    custom_V: Sequence[float] | None = None
+    allow_post_predictors: bool = False
+
+    def fit(self, panel: Panel) -> Estimate:
+        """Fit simplex donor weights with a pairwise discrepancy penalty."""
+        options = {"lambda_": self.lambda_}
+        if self.custom_V is not None:
+            options["custom_V"] = self.custom_V
+        result = self._fit(
+            panel, "pensynth", "Penalized SCM", options, self.dataprep, self.allow_post_predictors
+        )
+        result.metadata["method_reference"] = "https://doi.org/10.1080/01621459.2021.1971535"
+        return result
+
+
+@dataclass
+class PySyncon(_PredictorBackend):
+    """Compatibility interface for selecting an estimator by its backend identifier.
 
     ``method`` is ``synth``, ``augsynth``, ``pensynth``, or ``robust``.
     ``options`` are passed to the backend's ``fit``. ``dataprep`` optionally
@@ -323,114 +647,14 @@ class PySyncon:
     allow_post_predictors: bool = False
 
     def fit(self, panel: Panel) -> Estimate:
-        """Fit the selected upstream implementation, preserving donor labels."""
-        self.backend_ = None
-        upstream = _require("pysyncon")
-        classes = {
-            "synth": upstream.Synth,
-            "augsynth": upstream.AugSynth,
-            "pensynth": upstream.PenalizedSynth,
-            "robust": upstream.RobustSynth,
-        }
-        if self.method not in classes:
-            raise ValueError(f"method must be one of {list(classes)}")
-        if panel.n_treated != 1:
-            raise ValueError("These upstream adapters require one treated unit")
-        options = dict(self.options)
-        if self.method in {"augsynth", "pensynth"} and options.get("lambda_") is not None:
-            if not np.isfinite(options["lambda_"]) or options["lambda_"] < 0:
-                raise ValueError("lambda_ must be finite and nonnegative")
-        if options.get("custom_V") is not None:
-            metric = np.asarray(options["custom_V"], dtype=float)
-            if (
-                metric.ndim != 1
-                or not np.isfinite(metric).all()
-                or np.any(metric < 0)
-                or not np.any(metric > 0)
-            ):
-                raise ValueError("custom_V must be a finite nonnegative vector with positive mass")
-        post_predictor_periods = []
-        if self.dataprep is None:
-            frame = _canonical_frame(panel)
-            dp = upstream.Dataprep(
-                foo=frame,
-                predictors=[],
-                predictors_op="mean",
-                dependent="outcome",
-                unit_variable="unit",
-                time_variable="time",
-                treatment_identifier=panel.n_control,
-                controls_identifier=list(range(panel.n_control)),
-                time_predictors_prior=list(range(panel.n_pre)),
-                time_optimize_ssr=list(range(panel.n_pre)),
-                special_predictors=[("outcome", [t], "mean") for t in range(panel.n_pre)]
-                if self.method in {"synth", "pensynth"}
-                else None,
-            )
-            order = np.arange(panel.n_control)
-        else:
-            dp = self.dataprep
-            if (
-                dp.treatment_identifier != panel.units[-1]
-                or set(dp.controls_identifier) != set(panel.units[:-1])
-                or len(dp.controls_identifier) != panel.n_control
-            ):
-                raise ValueError("Dataprep units must match the Panel")
-            if list(dp.time_optimize_ssr) != list(panel.times[: panel.n_pre]):
-                raise ValueError("Dataprep fitting periods must equal Panel pre-periods")
-            predictor_periods = set(dp.time_predictors_prior) if dp.predictors else set()
-            for _, periods, _ in dp.special_predictors or []:
-                predictor_periods.update(periods)
-            if not predictor_periods <= set(panel.times):
-                raise ValueError("Dataprep predictor periods must be observed in the Panel")
-            post_predictor_periods = [
-                t for t in panel.times[panel.n_pre :] if t in predictor_periods
-            ]
-            if post_predictor_periods and not self.allow_post_predictors:
-                raise ValueError(
-                    "Dataprep predictors use post-treatment periods; historical replication "
-                    "requires explicit allow_post_predictors=True"
-                )
-            z0, z1 = dp.make_outcome_mats(time_period=list(panel.times))
-            if not np.array_equal(
-                z0.loc[:, list(panel.units[:-1])], panel.control
-            ) or not np.array_equal(z1, panel.treated):
-                raise ValueError("Dataprep outcomes must match the Panel")
-            order = np.array([list(dp.controls_identifier).index(u) for u in panel.units[:-1]])
-        model = classes[self.method]()
-        _checked_upstream_optimizers(model, recover_outer="optim_options" not in options)
-        if self.method == "augsynth" and self.dataprep is None:
-            if "use_covariates" in inspect.signature(model.fit).parameters:
-                options.setdefault("use_covariates", False)
-        counterfactual = None
-        if self.method == "robust":
-            counterfactual = _fit_robust(model, dp, panel, **options)
-        elif self.method == "augsynth":
-            _fit_augmented(model, dp, options)
-        else:
-            model.fit(dataprep=dp, **options)
-        self.backend_ = model
-        weights = np.asarray(model.W).reshape(-1)[order]
-        return make_estimate(
+        """Fit the selected backend and preserve its historical result identifier."""
+        return self._fit(
             panel,
+            self.method,
             f"pysyncon.{self.method}",
-            weights,
-            counterfactual=counterfactual,
-            metadata={
-                "backend_version": version("pysyncon"),
-                "options": options,
-                "optimization": model.optimization_diagnostics_,
-                "post_predictor_periods": post_predictor_periods,
-                **(
-                    {
-                        "denoised_prediction": True,
-                        "observed_fraction": 1.0,
-                        "retained_rank": model.retained_rank_,
-                    }
-                    if self.method == "robust"
-                    else {}
-                ),
-            },
+            self.options,
+            self.dataprep,
+            self.allow_post_predictors,
         )
 
 
@@ -551,3 +775,49 @@ class SCM:
                 "pandas_difference_fix": self.method == "diffsynth",
             },
         )
+
+
+@dataclass
+class DifferencedSyntheticControl:
+    """First-differenced synthetic control from Engelbrektson (2021, sections 4–5).
+
+    This fixed-penalty specification selects predictor weights on all available
+    pretreatment first differences. The inner simplex fit balances the mean
+    pretreatment change and the selected fixed outcome-level lags. The penalty
+    weights pairwise discrepancies in the original predictor profiles.
+    The intercept is the mean pretreatment gap in levels. Zero penalty is
+    the relaxed, unpenalized comparison in Table 2. Specify a fixed positive
+    penalty to fit the penalized variant. The paper also studies split-sample
+    penalty tuning; the constructor takes the penalty directly.
+    """
+
+    lambda_: float = 0.0
+    _: KW_ONLY
+    n_lags: int | None = None
+    n_optim: int = 10
+    random_state: int = 0
+    max_iter: int = 10000
+
+    def fit(self, panel: Panel) -> Estimate:
+        """Fit the first-difference objective and restore the pretreatment mean level."""
+        self.backend_ = None
+        adapter = SCM(
+            "diffsynth",
+            pen=self.lambda_,
+            n_lags=self.n_lags,
+            n_optim=self.n_optim,
+            random_state=self.random_state,
+            max_iter=self.max_iter,
+        )
+        result = adapter.fit(panel)
+        result.method = "Differenced SCM"
+        result.metadata.update(
+            method_reference="https://arxiv.org/abs/2111.10784",
+            backend_package="SyntheticControlMethods",
+            backend_method="diffsynth",
+            penalty=self.lambda_,
+            penalty_selection="fixed",
+            outer_fit_periods=panel.times[1 : panel.n_pre].tolist(),
+        )
+        self.backend_ = adapter.backend_
+        return result

@@ -2,7 +2,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pysynth import SCM, Panel, PySyncon
+from pysynth import (
+    SCM,
+    AugmentedSyntheticControl,
+    DifferencedSyntheticControl,
+    Panel,
+    PenalizedSyntheticControl,
+    PredictorSyntheticControl,
+    PySyncon,
+    RobustSyntheticControl,
+)
 
 
 @pytest.mark.parametrize(
@@ -313,3 +322,106 @@ def test_residualizing_duplicate_covariates_rejects_singular_ols(panel):
     dp.predictors = ["outcome", "duplicate"]
     with pytest.raises(ValueError, match="linearly independent centered covariates"):
         PySyncon("augsynth", dataprep=dp, options={"lambda_": 0.1, "residualize": True}).fit(panel)
+
+
+def test_predictor_windows_fit_labelled_means_and_validate_the_panel(panel):
+    pytest.importorskip("pysyncon")
+    dates = pd.date_range("1980", periods=len(panel.y), freq="YS")
+    labelled = Panel(panel.y, panel.n_control, panel.n_pre, times=dates, units=panel.units)
+    windows = [dates[:7], dates[7:20]]
+    spec = PredictorSyntheticControl(predictor_windows=windows, custom_V=[0.6, 0.4])
+    fit = spec.fit(labelled)
+    predictors, target = spec.backend_.dataprep.make_covariate_mats()
+    expected = np.array([panel.y[:7].mean(axis=0), panel.y[7:20].mean(axis=0)])
+    np.testing.assert_allclose(predictors, expected[:, :-1])
+    np.testing.assert_allclose(target, expected[:, -1])
+    assert fit.method == "Predictor SCM"
+    assert fit.metadata["predictor_windows"] == [list(w) for w in windows]
+    assert fit.metadata["method_reference"].endswith("jasa.2009.ap08746")
+
+    for invalid in ([], [[]], [dates[19:21]], [[dates[0], dates[0]]], "1980", [1980]):
+        with pytest.raises(ValueError, match="window"):
+            PredictorSyntheticControl(predictor_windows=invalid).fit(labelled)
+    with pytest.raises(ValueError, match="either predictor_windows or dataprep"):
+        PredictorSyntheticControl(dataprep=spec.backend_.dataprep, predictor_windows=windows).fit(
+            labelled
+        )
+
+
+def test_named_penalized_and_augmented_fits_have_distinct_paper_objectives():
+    pytest.importorskip("pysyncon")
+    donors = np.tile([0.0, 2.0], (6, 1))
+    panel = Panel(np.column_stack([donors, np.full(6, 0.8)]), 2, 4)
+    penalized = PenalizedSyntheticControl(lambda_=1.0).fit(panel)
+    # With donor-2 weight b the objective is proportional to
+    # (2b-.8)^2 + .64(1-b) + 1.44b, minimized at b=.3.
+    np.testing.assert_allclose(penalized.weights, [0.7, 0.3], atol=1e-8)
+    assert penalized.method == "Penalized SCM"
+    assert penalized.metadata["method_reference"].endswith("1971535")
+
+    # The target is outside the donor hull. With four identical pre-periods,
+    # SCM puts all mass on donor 2, leaving four residuals of +1. Ridge
+    # augmentation with lambda=2 and donor-centered design [-1, 1] per row
+    # adds [-.4, +.4] to the initial weights.
+    outside = Panel(np.column_stack([donors, np.full(6, 3.0)]), 2, 4)
+    augmented = AugmentedSyntheticControl(lambda_=2.0).fit(outside)
+    np.testing.assert_allclose(augmented.weights, [-0.4, 1.4], atol=1e-8)
+    np.testing.assert_allclose(augmented.counterfactual, 2.8, atol=1e-8)
+    assert augmented.method == "Ridge-augmented SCM"
+    assert augmented.metadata["ridge_penalty"] == 2
+    assert augmented.metadata["method_reference"].endswith("1929245")
+
+
+def test_named_robust_fit_needs_no_optional_backend_and_predicts_on_denoised_data(monkeypatch):
+    def unexpected(*args):
+        pytest.fail("RobustSyntheticControl should work from a complete Panel alone")
+
+    monkeypatch.setattr("pysynth.backends._require", unexpected)
+    donors = np.array([[0.0, 1.0], [2.0, 0.0], [1.0, 2.0], [2.0, 3.0], [4.0, 2.0]])
+    outcome = np.array([1.0, 2.0, 1.2, 5.0, 7.0])
+    panel = Panel(np.column_stack([donors, outcome]), 2, 3)
+    result = RobustSyntheticControl(lambda_=0.2, sv_count=1).fit(panel)
+    u, singular, vh = np.linalg.svd(donors, full_matrices=False)
+    projected = singular[0] * np.outer(u[:, 0], vh[0])
+    weights = np.linalg.solve(
+        projected[:3].T @ projected[:3] + 0.2 * np.eye(2), projected[:3].T @ outcome[:3]
+    )
+    np.testing.assert_allclose(result.weights, weights)
+    np.testing.assert_allclose(result.counterfactual, projected @ weights)
+    assert result.method == "Robust SCM"
+    assert result.metadata["observed_fraction"] == 1.0
+    assert result.metadata["retained_rank"] == 1
+    np.testing.assert_allclose(result.metadata["singular_values"], singular)
+
+
+def test_named_differenced_fit_recovers_known_slope_and_level():
+    pytest.importorskip("SyntheticControlMethods")
+    t = np.arange(8, dtype=float)
+    donors = np.column_stack([t, 2 + 3 * t])
+    untreated = donors @ [0.4, 0.6] + 2
+    observed = untreated.copy()
+    observed[5:] += 4
+    panel = Panel(np.column_stack([donors, observed]), 2, 5)
+    estimator = DifferencedSyntheticControl()
+    fit = estimator.fit(panel)
+    np.testing.assert_allclose(fit.weights, [0.4, 0.6], atol=1e-7)
+    np.testing.assert_allclose(fit.counterfactual, untreated, atol=1e-7)
+    assert fit.intercept == pytest.approx(2)
+    assert fit.att == pytest.approx(4)
+    assert fit.metadata["outer_fit_periods"] == [1, 2, 3, 4]
+    assert fit.method == "Differenced SCM"
+    migrated = SCM("diffsynth").fit(panel)
+    np.testing.assert_allclose(fit.counterfactual, migrated.counterfactual)
+    assert migrated.method == "SyntheticControlMethods.diffsynth"
+
+
+def test_augmented_custom_dataprep_with_no_covariates_uses_outcome_only_path(panel):
+    pytest.importorskip("pysyncon")
+    dp = _dataprep(panel)
+    dp.predictors = []
+    direct = AugmentedSyntheticControl(lambda_=0.3).fit(panel)
+    with_prep = AugmentedSyntheticControl(lambda_=0.3, dataprep=dp).fit(panel)
+    np.testing.assert_allclose(with_prep.weights, direct.weights)
+    assert not with_prep.metadata["options"]["use_covariates"]
+    with pytest.raises(ValueError, match="requires covariates"):
+        AugmentedSyntheticControl(lambda_=0.3, use_covariates=True).fit(panel)

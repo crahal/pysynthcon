@@ -89,12 +89,13 @@ def test_basque_paper_percentage_is_separate_from_original_r_att():
     assert "Costs%20of%20Conflict.pdf#page=4" in table.loc[1, "source_url"]
 
 
-def test_german_paper_and_software_targets_retain_different_precision_and_status():
+def test_german_figure_pairs_reproduced_mean_with_authors_rounded_estimate():
     fit = reference_fit(pd.Index(range(1960, 2004)), n_pre=30)
-    paper, code = reference_comparisons("germany", fit)
+    (paper,) = reference_comparisons("germany", fit)
     assert paper.reference == -1600 and paper.approximate
     assert paper.reference_precision == 0
-    assert code.reference == -1555.1346777620479 and not code.approximate
+    row = reference_comparison_table((paper,)).iloc[0]
+    assert row.reproduced == fit.att
     assert "2025 erratum" in paper.context
     assert "PPP current" in paper.units
 

@@ -14,8 +14,8 @@ from .results import Estimate, make_estimate
 class SyntheticControl:
     """Convex SCM matching every pre-treatment outcome with equal importance.
 
-    This is the outcome-only SCM specification. Use ``PySyncon`` with a
-    ``Dataprep`` for the nested predictor-weight optimisation in classic
+    This is the outcome-only SCM specification. Use ``PredictorSyntheticControl``
+    for the nested predictor-weight optimisation in classic
     published applications. ``ridge`` is an optional squared-weight penalty.
     """
 

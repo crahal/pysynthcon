@@ -10,7 +10,12 @@ from io import StringIO
 import numpy as np
 
 from ._r import reference_directory, require_rscript
-from .backends import PySyncon, _checked_upstream_optimizers, _require
+from .backends import (
+    AugmentedSyntheticControl,
+    PredictorSyntheticControl,
+    _checked_upstream_optimizers,
+    _require,
+)
 from .datasets import DATASETS
 from .plotting import LiteratureBenchmark, ReferenceComparison
 from .sdid import SyntheticDID
@@ -127,7 +132,7 @@ def reference_comparisons(name, reference, *, additional=None):
     """Bind sourced results to their reproduced historical specifications.
 
     Values are recomputed on each source window. Approximate paper headlines
-    and precise upstream software targets are identified separately. California
+    and numerical reproductions of authors’ specifications are identified separately. California
     accepts optional ``additional={"SC": sc_estimate, "DID": did_estimate}``;
     SC must be the synthdid paper's SC specification, not an arbitrary SCM fit.
     The caller is responsible for fitting the historical specification, as in
@@ -180,14 +185,6 @@ def reference_comparisons(name, reference, *, additional=None):
                 **common,
             ),
         )
-    commit = "b77dc20e29b012ab03ca1d4caeef7b41861e86f5"
-    upstream = dict(
-        estimate=reference,
-        citation=f"pysyncon parity fixture · {commit[:7]}",
-        source_url=f"https://github.com/sdfordham/pysyncon/blob/{commit}/parity_tests/test_synth_{name}.py",
-        source_label="Upstream software",
-        context="Historical predictor specification. This precise target is not a paper-printed estimate.",
-    )
     if name == "basque":
         original_synth = dict(
             estimate=reference,
@@ -233,15 +230,6 @@ def reference_comparisons(name, reference, *, additional=None):
             context="Approximate paper headline. Units follow the authors’ 2025 erratum.",
             **common,
         ),
-        ReferenceComparison(
-            label="Historical SCM",
-            reference=-1555.1346777620479,
-            window=(1990, 2003),
-            units="PPP current US$ per capita",
-            precision=2,
-            reference_precision=2,
-            **upstream,
-        ),
     )
 
 
@@ -279,7 +267,7 @@ def replicate(name, frame):
     if name == "california":
         return SyntheticDID().fit(panel)
     if name == "kansas":
-        return PySyncon("augsynth").fit(panel)
+        return AugmentedSyntheticControl().fit(panel)
     upstream = _require("pysyncon")
     spec = DATASETS[name]
     common = dict(
@@ -320,7 +308,7 @@ def replicate(name, frame):
                 ("popdens", [1969], "mean"),
             ],
         )
-        return PySyncon(dataprep=dp).fit(panel)
+        return PredictorSyntheticControl(dataprep=dp).fit(panel)
     # Historical 2015 replication convention includes 1990 in predictor means
     # and the V-training validation window. This is explicit, not a default
     # for new studies; the common comparison always fits strictly before 1990.
@@ -349,8 +337,8 @@ def replicate(name, frame):
             ("invest80", [1980], "mean"),
         ],
     )
-    result = PySyncon(
-        dataprep=dp, options={"custom_V": training_fit.V}, allow_post_predictors=True
+    result = PredictorSyntheticControl(
+        dataprep=dp, custom_V=training_fit.V, allow_post_predictors=True
     ).fit(panel)
     result.metadata["historical_training_optimization"] = training_fit.optimization_diagnostics_
     return result
