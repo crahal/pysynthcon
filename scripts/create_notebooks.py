@@ -19,7 +19,7 @@ EXAMPLES = {
     "germany": (
         "German reunification",
         "GDP per capita, 1960–2003; first comparison post-period 1990. Outcome: GDP per capita in PPP-adjusted current US dollars, following the authors' 2025 erratum.",
-        "Abadie, Diamond and Hainmueller (2015), [AJPS](https://doi.org/10.1111/ajps.12116). The historical two-stage predictor-weight specification is checked against the pysyncon reference ATT −1555.13468, with its predeclared 2.5% numerical tolerance. That reference includes 1990 in predictor means and the training validation window. We retain this historical convention explicitly; all common-comparison models below fit only years **strictly before 1990**.",
+        "Abadie, Diamond and Hainmueller (2015), [AJPS](https://doi.org/10.1111/ajps.12116). The paper reports that reunification reduced West Germany’s annual GDP per capita by approximately US$1,600 on average over 1990–2003. The historical two-stage predictor-weight specification includes 1990 in predictor means and in the training validation window. We retain this historical convention explicitly; all common-comparison models below fit only years **strictly before 1990**.",
     ),
     "kansas": (
         "The Kansas income-tax cuts",
@@ -38,7 +38,7 @@ FIGURE_DETAILS = {
         "onset": "1989",
         "reference": "SDID counterfactual",
         "reference_note": "No-covariate SDID. Shading marks the post-treatment period, not uncertainty.",
-        "comparison_note": "The paper's SC uses the SDID package's SC specification; the outcome-only SCM fits are separate applications.",
+        "comparison_note": "The paper’s SC comparison uses its own weight specification. The outcome and predictor SCM rows show the specifications chosen here.",
     },
     "basque": {
         "case": "The Basque Country",
@@ -142,7 +142,9 @@ def build(name, title, description, reference):
 
             from pysynth import (
                 SyntheticControl, SCUL, IndividualSC, TwoStageIndividualSC,
-                SyntheticDID, DifferenceInDifferences, PySyncon, SCM, compare,
+                SyntheticDID, DifferenceInDifferences, PredictorSyntheticControl,
+                AugmentedSyntheticControl, PenalizedSyntheticControl, RobustSyntheticControl,
+                DifferencedSyntheticControl, compare,
                 plot_paths, plot_effects, plot_comparison, save_figure,
                 select_estimator, donor_sensitivity, plot_backtest, plot_donor_sensitivity,
             )
@@ -267,13 +269,38 @@ def build(name, title, description, reference):
             + details(
                 "Estimator specifications and full computation settings",
                 """
-            Every comparison uses the same outcome panel, eligible donors and treatment
-            date. Classical pysyncon SCM estimates predictor importance by nested
-            optimization. SyntheticControlMethods uses **all pretreatment outcome
-            lags and all ten optimization starts**, with checked numerical recovery
-            when a gradient line search fails. Neither adapter truncates the fit
-            to accelerate this example. Native outcome SCM is retained as the
-            explicitly named equal-period baseline.
+            **Outcome SCM** minimizes equally weighted squared gaps across all
+            pretreatment periods. **Predictor SCM** matches three predictors: the
+            mean outcome in each of three consecutive, nearly equal-length blocks
+            of pretreatment dates. Its nested fit chooses predictor importance using
+            error across the full pretreatment path. The three-block design is a
+            prespecified application of classical SCM in these comparisons.
+            [Abadie, Diamond and Hainmueller (2010)](https://doi.org/10.1198/jasa.2009.ap08746)
+
+            **Ridge-augmented SCM** uses a ridge outcome model to adjust for
+            remaining pretreatment imbalance. The penalty is chosen by
+            pretreatment cross-validation.
+            [Ben-Michael, Feller and Rothstein (2021)](https://doi.org/10.1080/01621459.2021.1929245)
+
+            **Penalized SCM** matches pretreatment outcomes with a penalty on
+            the distance from the treated unit to each contributing donor.
+            The comparison fixes the pairwise penalty at 0.01.
+            [Abadie and L’Hour (2021)](https://doi.org/10.1080/01621459.2021.1971535)
+
+            **Robust SCM** denoises the full donor outcome matrix, fits weights
+            by ridge regression against pretreatment treated outcomes, and predicts
+            with the denoised donors. Here the rank is three and the ridge penalty
+            is 0.1. Both penalized and robust SCM use study-design tuning choices
+            for these applications.
+            [Amjad, Shah and Shen (2018)](https://jmlr.org/papers/v19/17-777.html)
+
+            **Differenced SCM** targets pretreatment changes and restores the
+            mean pretreatment level gap when predicting the untreated path.
+            This application uses all pretreatment outcome lags as level predictors,
+            ten optimizer starts, and the zero-penalty specification. It uses
+            the full pretreatment period for fitting. The working paper also
+            considers tuning by a training/validation split.
+            [Engelbrektson (2021 working paper), §4 and Table 2](https://arxiv.org/abs/2111.10784)
 
             SCUL calls the pinned original R functions and glmnet, selecting
             `lambda.median` from fold-specific paths. Its original near-zero-variance
@@ -282,8 +309,6 @@ def build(name, title, description, reference):
             penalty selection use only pretreatment outcomes. Rolling windows
             are stated in code. Basque has only ten pretreatment observations, so
             its validation horizon must be shorter than its 28-period post window.
-            Penalized and robust SCM retain the explicit illustrative tuning values
-            shown below; these are new applications, not paper-specific calibrations.
 
             ISC calls **MSCMT**, using the costofcare bootstrap workflow with **50
             donor resamples**. 2SISC follows Petrillo et al. (2025): raw nearest-neighbor
@@ -295,10 +320,9 @@ def build(name, title, description, reference):
             do not provide the survey-specific demographic predictors, eligibility
             rules, or individual sampling design of the original ISC studies.
 
-            SDID uses donor post-period outcomes to estimate time weights; robust
-            SCM uses them for donor denoising. Neither fits to treated post-outcomes.
-            Each model runs in full; failures stop execution. Elapsed fitting times
-            and optimizer diagnostics are exported alongside the estimates.
+            SDID uses post-period donor outcomes to estimate time weights.
+            Each model runs in full. The exports include elapsed fitting times
+            and optimizer diagnostics alongside the estimates.
         """,
             )
         ),
@@ -306,19 +330,22 @@ def build(name, title, description, reference):
             scul_windows = {'california': (5, 12), 'basque': (3, 5),
                             'germany': (14, 14), 'kansas': (16, 16)}
             initial, horizon = scul_windows[name]
+            pre_dates = panel.times[:panel.n_pre].to_numpy()
+            predictor_windows = [block.tolist() for block in np.array_split(pre_dates, 3)]
             models = {
                 'Outcome SCM': SyntheticControl(),
+                'Predictor SCM (three pre-period means)': PredictorSyntheticControl(
+                    predictor_windows=predictor_windows,
+                ),
+                'Ridge-augmented SCM': AugmentedSyntheticControl(),
+                'Penalized SCM (0.01)': PenalizedSyntheticControl(lambda_=0.01),
+                'Robust SCM (rank 3, ridge 0.1)': RobustSyntheticControl(sv_count=3, lambda_=0.1),
+                'Differenced SCM': DifferencedSyntheticControl(),
                 'SCUL': SCUL(initial_window=initial, horizon=horizon),
                 'ISC (full donor pool)': IndividualSC(),
                 '2SISC (nearest 10)': TwoStageIndividualSC(n_neighbors=10),
                 'Synthetic DID': SyntheticDID(),
                 'DID': DifferenceInDifferences(),
-                'pysyncon SCM': PySyncon('synth'),
-                'Augmented SCM': PySyncon('augsynth'),
-                'Penalized SCM (0.01)': PySyncon('pensynth', options={'lambda_': 0.01}),
-                'Robust SCM (rank 3, ridge 0.1)': PySyncon('robust', options={'lambda_': 0.1, 'sv_count': 3}),
-                'SyntheticControlMethods SCM': SCM('synth'),
-                'Differenced SCM': SCM('diffsynth'),
             }
             results, elapsed = {}, {}
             with warnings.catch_warnings(record=True) as comparison_warnings:
@@ -334,7 +361,7 @@ def build(name, title, description, reference):
                     'SC': additional['SC'], 'DID': results['DID'],
                 })
             elif name == 'kansas':
-                references = matched_references(results['Augmented SCM'])
+                references = matched_references(results['Ridge-augmented SCM'])
             diagnostics = {label: fit.metadata for label, fit in results.items()}
             (output_dir / f'{name}-diagnostics.json').write_text(
                 json.dumps(diagnostics, indent=2, default=str) + chr(10)
@@ -342,11 +369,9 @@ def build(name, title, description, reference):
             display_labels = {
                 'ISC (full donor pool)': 'ISC · full donor pool',
                 '2SISC (nearest 10)': '2SISC · nearest 10',
-                'pysyncon SCM': 'SCM · pysyncon',
+                'Predictor SCM (three pre-period means)': 'Predictor SCM · 3 blocks',
                 'Penalized SCM (0.01)': 'Penalized SCM · λ = 0.01',
                 'Robust SCM (rank 3, ridge 0.1)': 'Robust SCM · rank 3',
-                'SyntheticControlMethods SCM': 'SCM · SCMethods',
-                'Differenced SCM': 'Differenced SCM',
             }
         """),
         markdown("""

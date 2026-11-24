@@ -51,6 +51,44 @@ def test_generated_code_compiles_and_diagnostics_are_valid_json(name, generator,
     }
 
 
+def test_common_estimator_specs_use_paper_methods_and_pretreatment_predictors(generator, tmp_path):
+    from types import SimpleNamespace
+
+    import numpy as np
+    import pandas as pd
+
+    import pysynth
+
+    generator.build("kansas", *generator.EXAMPLES["kansas"])
+    nb = generator.nbf.read(tmp_path / "empirical_examples/kansas.ipynb", as_version=4)
+    cell = next(cell.source for cell in nb.cells if "models = {" in cell.source)
+    times = pd.Index(2000 + np.arange(15) / 4)
+    scope = {
+        **vars(pysynth),
+        "np": np,
+        "panel": SimpleNamespace(times=times, n_pre=10),
+        "name": "kansas",
+    }
+    exec(cell.split("results, elapsed =")[0], scope)
+    models = list(scope["models"].values())
+    types = [type(model) for model in models]
+    for method in (
+        pysynth.PredictorSyntheticControl,
+        pysynth.AugmentedSyntheticControl,
+        pysynth.PenalizedSyntheticControl,
+        pysynth.RobustSyntheticControl,
+        pysynth.DifferencedSyntheticControl,
+    ):
+        assert types.count(method) == 1
+    assert not {method.__name__ for method in types} & {"PySyncon", "SCM"}
+    predictor = models[types.index(pysynth.PredictorSyntheticControl)]
+    assert [list(window) for window in predictor.predictor_windows] == [
+        times[:4].tolist(),
+        times[4:7].tolist(),
+        times[7:10].tolist(),
+    ]
+
+
 @pytest.mark.parametrize("from_notebook_directory", [False, True])
 def test_empirical_export_paths_and_result_tables(
     from_notebook_directory, generator, monkeypatch, tmp_path
